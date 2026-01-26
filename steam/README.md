@@ -30,42 +30,73 @@ docker run --rm -it \
 Add a new app entry next to your existing Steam entry. The example below keeps the original Steam entry intact and adds a new "Steam (Tools)" entry.
 
 ```toml
-[[apps]]
-name = "Steam"
-title = "Steam"
-image = "ghcr.io/games-on-whales/steam:edge"
+[[profiles.apps]]
+icon_png_path = 'https://games-on-whales.github.io/wildlife/apps/steam/assets/icon.png'
+start_virtual_compositor = true
+title = 'Steam'
 
-[[apps]]
-name = "WolfSteamTools"
-title = "Steam (Tools)"
-image = "nillivanilli0815/wolf-tools-steam:edge"
+    [profiles.apps.runner]
+    base_create_json = '''{
+  "HostConfig": {
+    "IpcMode": "host",
+    "CapAdd": ["SYS_ADMIN", "SYS_NICE", "SYS_PTRACE", "NET_RAW", "MKNOD", "NET_ADMIN"],
+    "SecurityOpt": ["seccomp=unconfined", "apparmor=unconfined"],
+    "Ulimits": [{"Name":"nofile", "Hard":10240, "Soft":10240}],
+    "Privileged": false,
+    "DeviceCgroupRules": ["c 13:* rmw", "c 244:* rmw"]
+  }
+}
+'''
+    devices = []
+    env = [ 'PROTON_LOG=1', 'RUN_SWAY=true', 'GOW_REQUIRED_DEVICES=/dev/input/* /dev/dri/* /dev/nvidia*' ]
+    image = 'ghcr.io/games-on-whales/steam:edge'
+    mounts = [
+      "/mnt/cachessd/wolf:/mnt/cachessd/wolf:rw",
+      "/mnt/cachessd/wolf:/etc/wolf:rw",
+      "/mnt/games:/mnt/games:rw",
+      "/mnt/cachessd/games_slow:/mnt/games_slow:rw",
+      "/mnt/downloadssd:/mnt/downloadssd:rw",
+    ]
+    name = 'WolfSteam'
+    ports = []
+    type = 'docker'
 
-[apps.env]
-PROTON_LOG = "1"
-RUN_SWAY = "true"
-GOW_REQUIRED_DEVICES = "/dev/input/* /dev/dri/* /dev/nvidia*"
-FIX_PERMS = "1"
-PERMS_PATHS = "/home/retro"
+[[profiles.apps]]
+icon_png_path = 'https://games-on-whales.github.io/wildlife/apps/steam/assets/icon.png'
+start_virtual_compositor = true
+title = 'Steam (Tools)'
 
-[[apps.mounts]]
-source = "/mnt/cachessd/wolf"
-target = "/mnt/cachessd/wolf"
-
-[[apps.mounts]]
-source = "/mnt/cachessd/wolf"
-target = "/etc/wolf"
-
-[[apps.mounts]]
-source = "/mnt/games"
-target = "/home/retro/games"
-
-[[apps.mounts]]
-source = "/mnt/cachessd/games_slow"
-target = "/home/retro/games_slow"
-
-[[apps.mounts]]
-source = "/mnt/downloadssd"
-target = "/home/retro/downloadssd"
+    [profiles.apps.runner]
+    base_create_json = '''{
+  "HostConfig": {
+    "IpcMode": "host",
+    "CapAdd": ["SYS_ADMIN", "SYS_NICE", "SYS_PTRACE", "NET_RAW", "MKNOD", "NET_ADMIN"],
+    "SecurityOpt": ["seccomp=unconfined", "apparmor=unconfined"],
+    "Ulimits": [{"Name":"nofile", "Hard":10240, "Soft":10240}],
+    "Privileged": false,
+    "DeviceCgroupRules": ["c 13:* rmw", "c 244:* rmw"]
+  }
+}
+'''
+    devices = []
+    env = [
+      'PROTON_LOG=1',
+      'RUN_SWAY=true',
+      'GOW_REQUIRED_DEVICES=/dev/input/* /dev/dri/* /dev/nvidia*',
+      'FIX_PERMS=1',
+      'PERMS_PATHS=/home/retro',
+    ]
+    image = 'nillivanilli0815/wolf-tools-steam:edge'
+    mounts = [
+      "/mnt/cachessd/wolf:/mnt/cachessd/wolf:rw",
+      "/mnt/cachessd/wolf:/etc/wolf:rw",
+      "/mnt/games:/home/retro/games:rw",
+      "/mnt/cachessd/games_slow:/home/retro/games_slow:rw",
+      "/mnt/downloadssd:/home/retro/downloadssd:rw",
+    ]
+    name = 'WolfSteamTools'
+    ports = []
+    type = 'docker'
 ```
 
 ## Permissions troubleshooting
