@@ -1,6 +1,6 @@
 # Steam Tools Image
 
-This image extends the Steam Wolf image with tooling such as protontricks and Ludusavi.
+This image extends the Steam Wolf image with tooling such as protontricks and Ludusavi. Ludusavi is installed from the pinned GitHub Releases linux tarball.
 
 ## Build locally
 
@@ -8,7 +8,7 @@ This image extends the Steam Wolf image with tooling such as protontricks and Lu
 docker build -t nillivanilli0815/wolf-tools-steam:edge ./steam
 ```
 
-To pin a specific Ludusavi release, set the `LUDUSAVI_VERSION` build argument:
+To pin a specific Ludusavi release (which updates the GitHub Releases tarball URL), set the `LUDUSAVI_VERSION` build argument:
 
 ```bash
 docker build --build-arg LUDUSAVI_VERSION=0.30.0 -t nillivanilli0815/wolf-tools-steam:edge ./steam
