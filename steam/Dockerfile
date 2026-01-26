@@ -34,7 +34,7 @@ RUN case "${TARGETARCH}" in \
     exit 1; \
   fi \
   && mkdir -p /tmp/ludusavi-extract \
-  && tar -tf /tmp/ludusavi.archive \
+7 po  && tar -tf /tmp/ludusavi.archive \
   && tar -xf /tmp/ludusavi.archive -C /tmp/ludusavi-extract \
   && LUDUSAVI_BIN="$(find /tmp/ludusavi-extract -type f -name ludusavi -print -quit)" \
   && if [[ -z "${LUDUSAVI_BIN}" ]]; then \
