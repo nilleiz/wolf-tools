@@ -53,9 +53,8 @@ title = 'Steam'
     mounts = [
       "/mnt/cachessd/wolf:/mnt/cachessd/wolf:rw",
       "/mnt/cachessd/wolf:/etc/wolf:rw",
-      "/mnt/games:/mnt/games:rw",
-      "/mnt/cachessd/games_slow:/mnt/games_slow:rw",
-      "/mnt/downloadssd:/mnt/downloadssd:rw",
+      "/mnt/storage/games:/home/retro/games:rw",
+      "/mnt/storage/downloads:/home/retro/downloads:rw",
     ]
     name = 'WolfSteam'
     ports = []
@@ -90,9 +89,8 @@ title = 'Steam (Tools)'
     mounts = [
       "/mnt/cachessd/wolf:/mnt/cachessd/wolf:rw",
       "/mnt/cachessd/wolf:/etc/wolf:rw",
-      "/mnt/games:/home/retro/games:rw",
-      "/mnt/cachessd/games_slow:/home/retro/games_slow:rw",
-      "/mnt/downloadssd:/home/retro/downloadssd:rw",
+      "/mnt/storage/games:/home/retro/games:rw",
+      "/mnt/storage/downloads:/home/retro/downloads:rw",
     ]
     name = 'WolfSteamTools'
     ports = []
