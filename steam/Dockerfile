@@ -33,35 +33,10 @@ RUN case "${TARGETARCH}" in \
     exit 1; \
   fi \
   && export LUDUSAVI_ARCH \
-  && LUDUSAVI_URL="$(python3 -c 'import json, os; arch=os.environ.get("LUDUSAVI_ARCH","").lower(); arch_aliases={"x86_64":["x86_64","x64","amd64"],"aarch64":["aarch64","arm64"]}; preferred_exts=[".tar.xz",".tar.gz",".zip"]; data=json.load(open("/tmp/ludusavi.json","r",encoding="utf-8")); choices=[]; \
-    \
-    for asset in data.get("assets",[]): \
-        name=asset.get("name",""); lower=name.lower(); \
-        \
-        if "linux" not in lower: \
-            continue; \
-        \
-        if arch and not any(token in lower for token in arch_aliases.get(arch, [])): \
-            continue; \
-        \
-        url=asset.get("browser_download_url",""); \
-        \
-        if not url: \
-            continue; \
-        \
-        for idx, ext in enumerate(preferred_exts): \
-            \
-            if lower.endswith(ext): \
-                choices.append((idx, url, name)); \
-                break; \
-    \
-    choices.sort(key=lambda item: item[0]); print(choices[0][1] if choices else "")')" \
+  && LUDUSAVI_URL="$(python3 -c $'import json, os\narch = os.environ.get(\"LUDUSAVI_ARCH\", \"\").lower()\narch_aliases = {\"x86_64\": [\"x86_64\", \"x64\", \"amd64\"], \"aarch64\": [\"aarch64\", \"arm64\"]}\npreferred_exts = [\".tar.xz\", \".tar.gz\", \".zip\"]\nwith open(\"/tmp/ludusavi.json\", \"r\", encoding=\"utf-8\") as fh:\n    data = json.load(fh)\nassets = data.get(\"assets\", [])\nchoices = []\nfor asset in assets:\n    name = asset.get(\"name\", \"\")\n    lower_name = name.lower()\n    if \"linux\" not in lower_name:\n        continue\n    if arch and not any(token in lower_name for token in arch_aliases.get(arch, [])):\n        continue\n    url = asset.get(\"browser_download_url\", \"\")\n    if not url:\n        continue\n    for idx, ext in enumerate(preferred_exts):\n        if lower_name.endswith(ext):\n            choices.append((idx, url))\n            break\nchoices.sort(key=lambda item: item[0])\nprint(choices[0][1] if choices else \"\")')" \
   && if [[ -z "${LUDUSAVI_URL}" ]]; then \
     echo "Unable to locate a Ludusavi linux asset for ${LUDUSAVI_ARCH} in ${LUDUSAVI_API_URL}" >&2; \
-    python3 -c 'import json; data=json.load(open("/tmp/ludusavi.json","r",encoding="utf-8")); print("Available assets:"); \
-      \
-      for asset in data.get("assets", []): \
-          print(f"- {asset.get(\"name\", \"\")}")'; \
+    python3 -c $'import json\nwith open(\"/tmp/ludusavi.json\", \"r\", encoding=\"utf-8\") as fh:\n    data = json.load(fh)\nprint(\"Available assets:\")\nfor asset in data.get(\"assets\", []):\n    print(f\"- {asset.get('\"'\"'name'\"'\"', '')}\")'; \
     exit 1; \
   fi \
   && if ! curl -fL -o /tmp/ludusavi.archive "${LUDUSAVI_URL}"; then \
