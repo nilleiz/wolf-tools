@@ -8,6 +8,12 @@ This image extends the Steam Wolf image with tooling such as protontricks and Lu
 docker build -t nillivanilli0815/wolf-tools-steam:edge ./steam
 ```
 
+To pin a specific Ludusavi release, set the `LUDUSAVI_VERSION` build argument:
+
+```bash
+docker build --build-arg LUDUSAVI_VERSION=0.30.0 -t nillivanilli0815/wolf-tools-steam:edge ./steam
+```
+
 ## Run locally (troubleshooting)
 
 ```bash
