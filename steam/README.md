@@ -51,8 +51,6 @@ title = 'Steam'
     env = [ 'PROTON_LOG=1', 'RUN_SWAY=true', 'GOW_REQUIRED_DEVICES=/dev/input/* /dev/dri/* /dev/nvidia*' ]
     image = 'ghcr.io/games-on-whales/steam:edge'
     mounts = [
-      "/mnt/cachessd/wolf:/mnt/cachessd/wolf:rw",
-      "/mnt/cachessd/wolf:/etc/wolf:rw",
       "/mnt/storage/games:/home/retro/games:rw",
       "/mnt/storage/downloads:/home/retro/downloads:rw",
     ]
@@ -87,8 +85,6 @@ title = 'Steam (Tools)'
     ]
     image = 'nillivanilli0815/wolf-tools-steam:edge'
     mounts = [
-      "/mnt/cachessd/wolf:/mnt/cachessd/wolf:rw",
-      "/mnt/cachessd/wolf:/etc/wolf:rw",
       "/mnt/storage/games:/home/retro/games:rw",
       "/mnt/storage/downloads:/home/retro/downloads:rw",
     ]
