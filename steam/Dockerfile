@@ -27,29 +27,45 @@ RUN case "${TARGETARCH}" in \
     *) echo "Unsupported TARGETARCH: ${TARGETARCH}"; exit 1 ;; \
   esac \
   && LUDUSAVI_BASE_URL="https://github.com/mtkennerly/ludusavi/releases/download/v${LUDUSAVI_VERSION}" \
-  && LUDUSAVI_TARBALL="" \
-  && for EXT in "tar.xz" "tar.gz"; do \
-    LUDUSAVI_URL="${LUDUSAVI_BASE_URL}/ludusavi-v${LUDUSAVI_VERSION}-linux-${LUDUSAVI_ARCH}.${EXT}"; \
-    if curl -fL -o /tmp/ludusavi.tar "${LUDUSAVI_URL}"; then \
-      LUDUSAVI_TARBALL="${LUDUSAVI_URL}"; \
-      break; \
-    else \
-      echo "Failed to download Ludusavi from ${LUDUSAVI_URL}" >&2; \
-    fi; \
-  done \
-  && if [[ -z "${LUDUSAVI_TARBALL}" ]]; then \
+  && LUDUSAVI_ASSET="" \
+  && for ASSET in \
+    "ludusavi-v${LUDUSAVI_VERSION}-linux-${LUDUSAVI_ARCH}.tar.xz" \
+    "ludusavi-v${LUDUSAVI_VERSION}-linux-${LUDUSAVI_ARCH}.tar.gz" \
+    "ludusavi-${LUDUSAVI_VERSION}-linux-${LUDUSAVI_ARCH}.tar.xz" \
+    "ludusavi-${LUDUSAVI_VERSION}-linux-${LUDUSAVI_ARCH}.tar.gz" \
+    "ludusavi-v${LUDUSAVI_VERSION}-linux-${LUDUSAVI_ARCH}.zip" \
+    "ludusavi-${LUDUSAVI_VERSION}-linux-${LUDUSAVI_ARCH}.zip"; do \
+      LUDUSAVI_URL="${LUDUSAVI_BASE_URL}/${ASSET}"; \
+      if curl -fL -o /tmp/ludusavi.archive "${LUDUSAVI_URL}"; then \
+        LUDUSAVI_ASSET="${ASSET}"; \
+        break; \
+      fi; \
+      STATUS="$(curl -sSL -o /dev/null -w "%{http_code}" "${LUDUSAVI_URL}" || true)"; \
+      echo "Failed to download Ludusavi from ${LUDUSAVI_URL} (status ${STATUS})" >&2; \
+    done \
+  && if [[ -z "${LUDUSAVI_ASSET}" ]]; then \
     echo "Unable to download Ludusavi release asset from ${LUDUSAVI_BASE_URL}" >&2; \
     exit 1; \
   fi \
   && mkdir -p /tmp/ludusavi-extract \
-  && tar -xf /tmp/ludusavi.tar -C /tmp/ludusavi-extract \
+  && case "${LUDUSAVI_ASSET}" in \
+    *.zip) \
+      unzip -l /tmp/ludusavi.archive; \
+      unzip -q /tmp/ludusavi.archive -d /tmp/ludusavi-extract ;; \
+    *.tar.gz|*.tar.xz) \
+      tar -tf /tmp/ludusavi.archive; \
+      tar -xf /tmp/ludusavi.archive -C /tmp/ludusavi-extract ;; \
+    *) \
+      echo "Unsupported Ludusavi archive format: ${LUDUSAVI_ASSET}" >&2; \
+      exit 1 ;; \
+  esac \
   && LUDUSAVI_BIN="$(find /tmp/ludusavi-extract -type f -name ludusavi -print -quit)" \
   && if [[ -z "${LUDUSAVI_BIN}" ]]; then \
-    echo "Ludusavi binary not found in archive from ${LUDUSAVI_TARBALL}" >&2; \
+    echo "Ludusavi binary not found in archive from ${LUDUSAVI_BASE_URL}/${LUDUSAVI_ASSET}" >&2; \
     exit 1; \
   fi \
   && install -m 0755 "${LUDUSAVI_BIN}" /usr/local/bin/ludusavi \
-  && rm -rf /tmp/ludusavi.tar /tmp/ludusavi-extract
+  && rm -rf /tmp/ludusavi.archive /tmp/ludusavi-extract
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 
