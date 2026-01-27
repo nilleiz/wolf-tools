@@ -60,5 +60,3 @@ LUDUSAVI_GUI
 
 RUN protontricks --version
 RUN ludusavi --version
-
-USER ${STEAM_RUNTIME_USER}
