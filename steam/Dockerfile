@@ -1,53 +1,64 @@
 FROM ghcr.io/games-on-whales/steam:edge
 
-ARG TARGETARCH
 ARG LUDUSAVI_VERSION=0.30.0
+ARG STEAM_RUNTIME_USER=retro
 
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 
+USER root
+
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-    protontricks \
-    winetricks \
     python3 \
+    python3-venv \
+    python3-pip \
+    winetricks \
     yad \
     zenity \
     cabextract \
     unzip \
     p7zip-full \
     xdg-utils \
-    gosu \
     curl \
     ca-certificates \
+  && if apt-cache show protontricks >/dev/null 2>&1; then \
+    apt-get install -y --no-install-recommends protontricks; \
+  else \
+    python3 -m pip install --no-cache-dir pipx; \
+    PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install --pip-args='--no-cache-dir' protontricks; \
+  fi \
   && rm -rf /var/lib/apt/lists/*
 
-RUN case "${TARGETARCH}" in \
-    amd64) LUDUSAVI_ARCH=x86_64 ;; \
-    arm64) LUDUSAVI_ARCH=aarch64 ;; \
-    *) echo "Unsupported TARGETARCH: ${TARGETARCH}"; exit 1 ;; \
-  esac \
-  && LUDUSAVI_URL="https://github.com/mtkennerly/ludusavi/releases/download/v${LUDUSAVI_VERSION}/ludusavi-v${LUDUSAVI_VERSION}-linux.tar.gz" \
-  && echo "Downloading Ludusavi from ${LUDUSAVI_URL}" \
-  && if ! curl -fL -o /tmp/ludusavi.archive "${LUDUSAVI_URL}"; then \
-    STATUS="$(curl -sSL -o /dev/null -w "%{http_code}" "${LUDUSAVI_URL}" || true)"; \
-    echo "Failed to download Ludusavi from ${LUDUSAVI_URL} (status ${STATUS})" >&2; \
-    exit 1; \
-  fi \
-  && mkdir -p /tmp/ludusavi-extract \
-  && tar -tf /tmp/ludusavi.archive \
-  && tar -xf /tmp/ludusavi.archive -C /tmp/ludusavi-extract \
-  && LUDUSAVI_BIN="$(find /tmp/ludusavi-extract -type f -name ludusavi -print -quit)" \
+RUN LUDUSAVI_URL="https://github.com/mtkennerly/ludusavi/releases/download/v${LUDUSAVI_VERSION}/ludusavi-v${LUDUSAVI_VERSION}-linux.tar.gz" \
+  && curl -fL -o /tmp/ludusavi.tar.gz "${LUDUSAVI_URL}" \
+  && mkdir -p /tmp/ludusavi \
+  && tar -xzf /tmp/ludusavi.tar.gz -C /tmp/ludusavi \
+  && LUDUSAVI_BIN="$(find /tmp/ludusavi -type f -name ludusavi -print -quit)" \
   && if [[ -z "${LUDUSAVI_BIN}" ]]; then \
-    echo "Ludusavi binary not found in archive from ${LUDUSAVI_URL}" >&2; \
+    echo "Ludusavi binary not found in ${LUDUSAVI_URL}" >&2; \
     exit 1; \
   fi \
   && install -m 0755 "${LUDUSAVI_BIN}" /usr/local/bin/ludusavi \
-  && rm -rf /tmp/ludusavi.archive /tmp/ludusavi-extract
+  && rm -rf /tmp/ludusavi /tmp/ludusavi.tar.gz
 
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN cat <<'PROTONTRICKS_GUI' > /usr/local/bin/protontricks-gui \
+  && chmod 0755 /usr/local/bin/protontricks-gui
+#!/usr/bin/env bash
+set -euo pipefail
+exec protontricks --gui "$@"
+PROTONTRICKS_GUI
 
-RUN /usr/local/bin/ludusavi --version
+RUN cat <<'LUDUSAVI_GUI' > /usr/local/bin/ludusavi-gui \
+  && chmod 0755 /usr/local/bin/ludusavi-gui
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${DISPLAY:-}" || -n "${WAYLAND_DISPLAY:-}" ]]; then
+  exec ludusavi "$@"
+fi
+ludusavi --help
+LUDUSAVI_GUI
+
 RUN protontricks --version
-RUN FIX_PERMS=0 ENTRYPOINT_FALLBACK_CMD=/bin/true /usr/local/bin/entrypoint.sh
+RUN ludusavi --version
 
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+USER ${STEAM_RUNTIME_USER}

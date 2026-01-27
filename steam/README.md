@@ -1,6 +1,6 @@
 # Steam Tools Image
 
-This image extends the Steam Wolf image with tooling such as protontricks and Ludusavi. Ludusavi is installed from the pinned GitHub Releases linux tarball.
+This image extends the upstream `ghcr.io/games-on-whales/steam:edge` image with extra tooling (protontricks + Ludusavi) while preserving the upstream runtime behavior (same entrypoint, CMD, and default user). The image only adds files and packages; it does not override the startup logic.
 
 ## Build locally
 
@@ -21,8 +21,6 @@ docker run --rm -it \
   -e PROTON_LOG=1 \
   -e RUN_SWAY=true \
   -e GOW_REQUIRED_DEVICES="/dev/input/* /dev/dri/* /dev/nvidia*" \
-  -e FIX_PERMS=1 \
-  -e PERMS_PATHS=/home/retro \
   -v /mnt/cachessd/wolf:/mnt/cachessd/wolf \
   -v /mnt/cachessd/wolf:/etc/wolf \
   -v /mnt/games:/home/retro/games \
@@ -82,13 +80,7 @@ title = 'Steam (Tools)'
 }
 '''
     devices = []
-    env = [
-      'PROTON_LOG=1',
-      'RUN_SWAY=true',
-      'GOW_REQUIRED_DEVICES=/dev/input/* /dev/dri/* /dev/nvidia*',
-      'FIX_PERMS=1',
-      'PERMS_PATHS=/home/retro',
-    ]
+    env = [ 'PROTON_LOG=1', 'RUN_SWAY=true', 'GOW_REQUIRED_DEVICES=/dev/input/* /dev/dri/* /dev/nvidia*' ]
     image = 'nillivanilli0815/wolf-tools-steam:edge'
     mounts = [
       "/mnt/storage/games:/home/retro/games:rw",
@@ -99,24 +91,17 @@ title = 'Steam (Tools)'
     type = 'docker'
 ```
 
-## Permissions troubleshooting
+## Using the tools inside Steam
 
-Bind-mounted paths must be writable by UID/GID 1000 on the host unless you are using CIFS/NFS mount options to map ownership. Mounting everything under `/home/retro` helps keep Steam paths consistent, but it does **not** change the host ownership/ACLs. Steam still writes to compatdata/pfx under `steamapps`, so ownership mismatches can break game launches.
+Once the Steam session is running, you can:
 
-The entrypoint’s permission fix is a best-effort `chown` over `PERMS_PATHS` and common Steam directories. This requires the container to start as root (Wolf `base_create_json` with `"User":"0:0"`) and then drops privileges to `RUN_AS_UID`/`RUN_AS_GID`.
+- Open a terminal in the Steam UI and run:
+  - `protontricks --gui`
+  - `ludusavi`
+- Or use **Add a Non-Steam Game** and point to:
+  - `/usr/local/bin/protontricks-gui`
+  - `/usr/local/bin/ludusavi-gui`
 
-### Recommendation
+## Notes on permissions
 
-* **Keep `FIX_PERMS=1` (default)** if any of the mounted paths are not owned by UID/GID 1000 or are created by other services/users.
-* **You can set `FIX_PERMS=0`** only when **all** mounted paths under `/home/retro` are already writable by UID/GID 1000 on the host.
-
-#### Wolf TOML env snippet
-
-```toml
-env = [
-  'FIX_PERMS=1',
-  'PERMS_PATHS=/home/retro',
-  'RUN_AS_UID=1000',
-  'RUN_AS_GID=1000',
-]
-```
+Protontricks and Ludusavi rely on Steam/Proton prefixes under your Steam library (e.g., `steamapps/compatdata`). Ensure those directories are writable for the default runtime user (typically UID/GID 1000) on the host mounts.
