@@ -101,4 +101,22 @@ title = 'Steam (Tools)'
 
 ## Permissions troubleshooting
 
-Bind-mounted paths must be writable by UID/GID 1000 on the host unless you are using CIFS/NFS mount options to map ownership. The entrypoint attempts to `chown` the bind-mounted paths at runtime, which requires the container to start as root and then drop privileges to the configured UID/GID.
+Bind-mounted paths must be writable by UID/GID 1000 on the host unless you are using CIFS/NFS mount options to map ownership. Mounting everything under `/home/retro` helps keep Steam paths consistent, but it does **not** change the host ownership/ACLs. Steam still writes to compatdata/pfx under `steamapps`, so ownership mismatches can break game launches.
+
+The entrypoint’s permission fix is a best-effort `chown` over `PERMS_PATHS` and common Steam directories. This requires the container to start as root (Wolf `base_create_json` with `"User":"0:0"`) and then drops privileges to `RUN_AS_UID`/`RUN_AS_GID`.
+
+### Recommendation
+
+* **Keep `FIX_PERMS=1` (default)** if any of the mounted paths are not owned by UID/GID 1000 or are created by other services/users.
+* **You can set `FIX_PERMS=0`** only when **all** mounted paths under `/home/retro` are already writable by UID/GID 1000 on the host.
+
+#### Wolf TOML env snippet
+
+```toml
+env = [
+  'FIX_PERMS=1',
+  'PERMS_PATHS=/home/retro',
+  'RUN_AS_UID=1000',
+  'RUN_AS_GID=1000',
+]
+```
