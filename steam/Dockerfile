@@ -34,7 +34,7 @@ RUN case "${TARGETARCH}" in \
     exit 1; \
   fi \
   && mkdir -p /tmp/ludusavi-extract \
-7 po  && tar -tf /tmp/ludusavi.archive \
+  && tar -tf /tmp/ludusavi.archive \
   && tar -xf /tmp/ludusavi.archive -C /tmp/ludusavi-extract \
   && LUDUSAVI_BIN="$(find /tmp/ludusavi-extract -type f -name ludusavi -print -quit)" \
   && if [[ -z "${LUDUSAVI_BIN}" ]]; then \
@@ -47,6 +47,7 @@ RUN case "${TARGETARCH}" in \
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 
 RUN /usr/local/bin/ludusavi --version
+RUN protontricks --version
+RUN FIX_PERMS=0 ENTRYPOINT_FALLBACK_CMD=/bin/true /usr/local/bin/entrypoint.sh
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["/bin/bash"]
