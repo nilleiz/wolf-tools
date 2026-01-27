@@ -1,6 +1,7 @@
 FROM ghcr.io/games-on-whales/steam:edge
 
 ARG LUDUSAVI_VERSION=0.30.0
+ARG STEAM_RUNTIME_USER=retro
 
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 
