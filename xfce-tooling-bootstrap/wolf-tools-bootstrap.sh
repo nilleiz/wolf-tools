@@ -1,0 +1,217 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+log_dir="$HOME/.config/wolf-tools"
+log_file="$log_dir/bootstrap.log"
+mkdir -p "$log_dir"
+touch "$log_file"
+
+log() {
+  printf '%s %s\n' "$(date +'%Y-%m-%d %H:%M:%S')" "$*" >>"$log_file"
+}
+
+log "Starting Wolf tools bootstrap."
+
+STEAM_ROOT=""
+steam_candidates=(
+  "$HOME/.steam/debian-installation"
+  "$HOME/.local/share/Steam"
+  "$HOME/.steam/steam"
+)
+
+for candidate in "${steam_candidates[@]}"; do
+  if [[ -d "$candidate/steamapps" ]]; then
+    STEAM_ROOT="$candidate"
+    break
+  fi
+done
+
+if [[ -z "$STEAM_ROOT" && -d "$HOME/.steam" ]]; then
+  steamapps_path="$(find "$HOME/.steam" -maxdepth 4 -type d -name steamapps 2>/dev/null | head -n 1 || true)"
+  if [[ -n "$steamapps_path" ]]; then
+    STEAM_ROOT="$(dirname "$steamapps_path")"
+  fi
+fi
+
+if [[ -z "$STEAM_ROOT" ]]; then
+  log "Steam not detected yet; start Steam once and restart XFCE"
+  exit 0
+fi
+
+log "Detected Steam root: $STEAM_ROOT"
+
+canonical_steam="$HOME/.local/share/Steam"
+if [[ "$STEAM_ROOT" == "$canonical_steam" ]]; then
+  mkdir -p "$canonical_steam"
+else
+  if [[ -e "$canonical_steam" && ! -L "$canonical_steam" ]]; then
+    backup_path="${canonical_steam}.backup.$(date +'%Y%m%d%H%M%S')"
+    log "Moving existing Steam directory to $backup_path"
+    mv "$canonical_steam" "$backup_path"
+  fi
+  if [[ -L "$canonical_steam" ]]; then
+    current_target="$(readlink "$canonical_steam")"
+    if [[ "$current_target" != "$STEAM_ROOT" ]]; then
+      log "Updating Steam symlink from $current_target to $STEAM_ROOT"
+      rm "$canonical_steam"
+      ln -s "$STEAM_ROOT" "$canonical_steam"
+    fi
+  elif [[ ! -e "$canonical_steam" ]]; then
+    log "Creating Steam symlink at $canonical_steam -> $STEAM_ROOT"
+    ln -s "$STEAM_ROOT" "$canonical_steam"
+  fi
+fi
+
+log "Ensuring Flathub remote exists"
+flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+apps=(
+  com.github.Matoking.protontricks
+  com.github.mtkennerly.ludusavi
+)
+
+for app in "${apps[@]}"; do
+  if ! flatpak info --user "$app" >/dev/null 2>&1; then
+    log "Installing $app"
+    flatpak --user install -y flathub "$app"
+  else
+    log "$app already installed"
+  fi
+done
+
+mount_points=()
+if [[ -r /proc/self/mountinfo ]]; then
+  mapfile -t mount_points < <(
+    awk '
+      function excluded(fs) {
+        return fs == "proc" || fs == "sysfs" || fs == "devtmpfs" || fs == "tmpfs" ||
+               fs == "cgroup" || fs == "cgroup2" || fs == "overlay" || fs == "squashfs"
+      }
+      {
+        split($0, parts, " - ")
+        if (length(parts) < 2) next
+        mp = $5
+        split(parts[2], post, " ")
+        fstype = post[1]
+        if (index(mp, "/mnt/") == 1 && mp != "/mnt" && !excluded(fstype)) print mp
+      }
+    ' /proc/self/mountinfo | sort -u
+  )
+elif [[ -r /proc/mounts ]]; then
+  mapfile -t mount_points < <(
+    awk '
+      function excluded(fs) {
+        return fs == "proc" || fs == "sysfs" || fs == "devtmpfs" || fs == "tmpfs" ||
+               fs == "cgroup" || fs == "cgroup2" || fs == "overlay" || fs == "squashfs"
+      }
+      {
+        mp = $2
+        fstype = $3
+        if (index(mp, "/mnt/") == 1 && mp != "/mnt" && !excluded(fstype)) print mp
+      }
+    ' /proc/mounts | sort -u
+  )
+fi
+
+if [[ ${#mount_points[@]} -gt 0 ]]; then
+  log "Discovered /mnt mountpoints: ${mount_points[*]}"
+else
+  log "No /mnt mountpoints discovered"
+fi
+
+library_paths=()
+library_file="$canonical_steam/steamapps/libraryfolders.vdf"
+if [[ -f "$library_file" ]]; then
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    library_paths+=("$path")
+  done < <(
+    grep -E '"path"' "$library_file" | \
+      sed -E 's/.*"path"[[:space:]]*"([^"]+)".*/\1/' | \
+      sed 's#\\\\#/#g' | \
+      sort -u
+  )
+  if [[ ${#library_paths[@]} -gt 0 ]]; then
+    log "Discovered Steam library paths: ${library_paths[*]}"
+  fi
+else
+  log "Steam library list not found yet at $library_file"
+fi
+
+declare -A filesystem_paths=()
+add_path() {
+  local path="$1"
+  [[ -n "$path" ]] || return
+  filesystem_paths["$path"]=1
+}
+
+add_path "$STEAM_ROOT"
+add_path "$canonical_steam"
+for mp in "${mount_points[@]}"; do
+  add_path "$mp"
+done
+for lp in "${library_paths[@]}"; do
+  add_path "$lp"
+done
+
+sorted_paths=()
+if [[ ${#filesystem_paths[@]} -gt 0 ]]; then
+  mapfile -t sorted_paths < <(printf '%s\n' "${!filesystem_paths[@]}" | sort -u)
+fi
+
+for app in "${apps[@]}"; do
+  for path in "${sorted_paths[@]}"; do
+    flatpak --user override --filesystem="$path" "$app"
+  done
+  log "Applied Flatpak filesystem overrides for $app"
+done
+
+bin_dir="$HOME/bin"
+mkdir -p "$bin_dir"
+protontricks_gui="$bin_dir/protontricks-gui"
+cat <<'PROTONTRICKS_GUI' > "$protontricks_gui"
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ -d "$HOME/.local/share/Steam/steamapps" ]]; then
+  steam_dir="$HOME/.local/share/Steam"
+elif [[ -d "$HOME/.steam/debian-installation/steamapps" ]]; then
+  steam_dir="$HOME/.steam/debian-installation"
+else
+  steam_dir="$HOME/.steam"
+fi
+
+exec flatpak run --env=STEAM_DIR="$steam_dir" --env=GTK_USE_PORTAL=0 com.github.Matoking.protontricks --gui "$@"
+PROTONTRICKS_GUI
+chmod 0755 "$protontricks_gui"
+
+protontricks_cli="$bin_dir/protontricks"
+cat <<'PROTONTRICKS_CLI' > "$protontricks_cli"
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ -d "$HOME/.local/share/Steam/steamapps" ]]; then
+  steam_dir="$HOME/.local/share/Steam"
+elif [[ -d "$HOME/.steam/debian-installation/steamapps" ]]; then
+  steam_dir="$HOME/.steam/debian-installation"
+else
+  steam_dir="$HOME/.steam"
+fi
+
+exec flatpak run --env=STEAM_DIR="$steam_dir" --env=GTK_USE_PORTAL=0 com.github.Matoking.protontricks "$@"
+PROTONTRICKS_CLI
+chmod 0755 "$protontricks_cli"
+
+applications_dir="$HOME/.local/share/applications"
+mkdir -p "$applications_dir"
+cat <<'DESKTOP_ENTRY' > "$applications_dir/protontricks-gui.desktop"
+[Desktop Entry]
+Type=Application
+Name=Protontricks (GUI)
+Exec=/home/retro/bin/protontricks-gui
+Icon=com.github.Matoking.protontricks
+Categories=Game;Utility;
+Terminal=false
+DESKTOP_ENTRY
+
+log "Bootstrap completed successfully."

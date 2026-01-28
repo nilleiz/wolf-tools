@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Wolf Tools Bootstrap
+Exec=/usr/local/bin/wolf-tools-bootstrap.sh
+OnlyShowIn=XFCE;
+Terminal=false
+X-GNOME-Autostart-enabled=true
