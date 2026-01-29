@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -u
 
 log_dir="$HOME/.config/wolf-tools"
 log_file="$log_dir/bootstrap.log"
@@ -10,7 +10,25 @@ log() {
   printf '%s %s\n' "$(date +'%Y-%m-%d %H:%M:%S')" "$*" >>"$log_file"
 }
 
+run_cmd() {
+  if ! "$@"; then
+    log "Command failed (ignored): $*"
+  fi
+}
+
+trap 'status=$?; if [[ $status -ne 0 ]]; then log "Bootstrap exited with status $status (ignored)."; fi; exit 0' EXIT
+
 log "Starting Wolf tools bootstrap."
+log "User: $(id -un 2>/dev/null || echo unknown) (uid=$(id -u 2>/dev/null || echo unknown) gid=$(id -g 2>/dev/null || echo unknown))"
+log "id: $(id 2>/dev/null || echo unavailable)"
+log "passwd entry for retro: $(getent passwd retro 2>/dev/null || echo missing)"
+log "passwd entry for uid 1000: $(getent passwd 1000 2>/dev/null || echo missing)"
+log "Environment:"
+while IFS= read -r line; do
+  log "env: $line"
+done < <(env | sort)
+
+sleep 2
 
 STEAM_ROOT=""
 steam_candidates=(
@@ -47,23 +65,23 @@ else
   if [[ -e "$canonical_steam" && ! -L "$canonical_steam" ]]; then
     backup_path="${canonical_steam}.backup.$(date +'%Y%m%d%H%M%S')"
     log "Moving existing Steam directory to $backup_path"
-    mv "$canonical_steam" "$backup_path"
+    run_cmd mv "$canonical_steam" "$backup_path"
   fi
   if [[ -L "$canonical_steam" ]]; then
     current_target="$(readlink "$canonical_steam")"
     if [[ "$current_target" != "$STEAM_ROOT" ]]; then
       log "Updating Steam symlink from $current_target to $STEAM_ROOT"
-      rm "$canonical_steam"
-      ln -s "$STEAM_ROOT" "$canonical_steam"
+      run_cmd rm "$canonical_steam"
+      run_cmd ln -s "$STEAM_ROOT" "$canonical_steam"
     fi
   elif [[ ! -e "$canonical_steam" ]]; then
     log "Creating Steam symlink at $canonical_steam -> $STEAM_ROOT"
-    ln -s "$STEAM_ROOT" "$canonical_steam"
+    run_cmd ln -s "$STEAM_ROOT" "$canonical_steam"
   fi
 fi
 
 log "Ensuring Flathub remote exists"
-flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+run_cmd flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
 apps=(
   com.github.Matoking.protontricks
@@ -73,7 +91,7 @@ apps=(
 for app in "${apps[@]}"; do
   if ! flatpak info --user "$app" >/dev/null 2>&1; then
     log "Installing $app"
-    flatpak --user install -y flathub "$app"
+    run_cmd flatpak --user install -y flathub "$app"
   else
     log "$app already installed"
   fi
@@ -161,13 +179,13 @@ fi
 
 for app in "${apps[@]}"; do
   for path in "${sorted_paths[@]}"; do
-    flatpak --user override --filesystem="$path" "$app"
+    run_cmd flatpak --user override --filesystem="$path" "$app"
   done
   log "Applied Flatpak filesystem overrides for $app"
 done
 
 bin_dir="$HOME/bin"
-mkdir -p "$bin_dir"
+run_cmd mkdir -p "$bin_dir"
 protontricks_gui="$bin_dir/protontricks-gui"
 cat <<'PROTONTRICKS_GUI' > "$protontricks_gui"
 #!/usr/bin/env bash
@@ -183,7 +201,7 @@ fi
 
 exec flatpak run --env=STEAM_DIR="$steam_dir" --env=GTK_USE_PORTAL=0 com.github.Matoking.protontricks --gui "$@"
 PROTONTRICKS_GUI
-chmod 0755 "$protontricks_gui"
+run_cmd chmod 0755 "$protontricks_gui"
 
 protontricks_cli="$bin_dir/protontricks"
 cat <<'PROTONTRICKS_CLI' > "$protontricks_cli"
@@ -200,10 +218,10 @@ fi
 
 exec flatpak run --env=STEAM_DIR="$steam_dir" --env=GTK_USE_PORTAL=0 com.github.Matoking.protontricks "$@"
 PROTONTRICKS_CLI
-chmod 0755 "$protontricks_cli"
+run_cmd chmod 0755 "$protontricks_cli"
 
 applications_dir="$HOME/.local/share/applications"
-mkdir -p "$applications_dir"
+run_cmd mkdir -p "$applications_dir"
 cat <<'DESKTOP_ENTRY' > "$applications_dir/protontricks-gui.desktop"
 [Desktop Entry]
 Type=Application
@@ -215,3 +233,8 @@ Terminal=false
 DESKTOP_ENTRY
 
 log "Bootstrap completed successfully."
+if [[ "${WOLF_DEBUG_KEEPALIVE:-}" == "1" ]]; then
+  log "WOLF_DEBUG_KEEPALIVE=1 set; keeping bootstrap process alive."
+  sleep infinity
+fi
+exit 0

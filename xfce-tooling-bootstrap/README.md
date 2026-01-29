@@ -27,6 +27,7 @@ image = "nillivanilli0815/wolf-xfce-tools:edge"
 
 ## Notes
 
+- The image ensures a `retro` user/group (UID/GID 1000) with `/home/retro` so Wolf can start the container.
 - Steam must be launched at least once so `steamapps/libraryfolders.vdf` exists.
 - A game must be launched at least once to create Proton compatdata prefixes (required for Protontricks).
 - Host storage should be mounted under `/mnt/*` (arbitrary names are supported).
