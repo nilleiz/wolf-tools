@@ -13,6 +13,7 @@ Point your XFCE app image to this image:
 ```toml
 [apps.xfce]
 image = "nillivanilli0815/wolf-xfce-tools:edge"
+env = { PUID = "1000", PGID = "1000", USER = "retro", USERNAME = "retro", HOME = "/home/retro" }
 ```
 
 ## What it does
@@ -27,6 +28,7 @@ image = "nillivanilli0815/wolf-xfce-tools:edge"
 
 ## Notes
 
+- The image configures the upstream user-setup script via env vars so a `retro` user/group (UID/GID 1000) with `/home/retro` is created at startup.
 - Steam must be launched at least once so `steamapps/libraryfolders.vdf` exists.
 - A game must be launched at least once to create Proton compatdata prefixes (required for Protontricks).
 - Host storage should be mounted under `/mnt/*` (arbitrary names are supported).
