@@ -2,7 +2,11 @@ FROM ghcr.io/games-on-whales/xfce:edge
 
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 
-USER root
+ENV PUID=1000 \
+  PGID=1000 \
+  USER=retro \
+  USERNAME=retro \
+  HOME=/home/retro
 
 RUN if ! getent group retro > /dev/null; then \
     if getent group 1000 > /dev/null; then \
