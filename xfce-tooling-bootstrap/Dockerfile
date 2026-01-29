@@ -26,5 +26,3 @@ COPY wolf-tools-bootstrap.desktop /etc/xdg/autostart/wolf-tools-bootstrap.deskto
 
 RUN chmod 0755 /usr/local/bin/wolf-tools-bootstrap.sh \
   && chmod 0644 /etc/xdg/autostart/wolf-tools-bootstrap.desktop
-
-USER retro
