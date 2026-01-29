@@ -46,7 +46,7 @@ jobs:
 
       - name: Smoke test container stays running
         run: |
-          docker run --rm -d --name test-xfce wolf-xfce-tools:smoke-test
+          docker run -d --name test-xfce wolf-xfce-tools:smoke-test
           sleep 10
           if ! docker ps --format '{{.Names}}' | grep -q '^test-xfce$'; then
             docker logs test-xfce || true
