@@ -17,4 +17,8 @@ COPY wolf-tools-bootstrap.desktop /etc/xdg/autostart/wolf-tools-bootstrap.deskto
 
 RUN chmod 0755 /usr/local/bin/wolf-tools-bootstrap.sh \
   && chmod 0644 /etc/xdg/autostart/wolf-tools-bootstrap.desktop \
+  && mkdir -p /tmp/.X11-unix /run/user/1000 \
+  && chmod 1777 /tmp/.X11-unix \
+  && chmod 700 /run/user/1000 \
+  && chown 1000:1000 /run/user/1000 \
   && bash -n /etc/cont-init.d/10-setup_user.sh
