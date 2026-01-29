@@ -34,6 +34,27 @@ jobs:
             type=raw,value=edge
             type=sha,format=short
 
+      - name: Build image for smoke test
+        uses: docker/build-push-action@v5
+        with:
+          context: ./xfce-tooling-bootstrap
+          file: ./xfce-tooling-bootstrap/Dockerfile
+          load: true
+          pull: true
+          platforms: linux/amd64
+          tags: wolf-xfce-tools:smoke-test
+
+      - name: Smoke test container stays running
+        run: |
+          docker run -d --name test-xfce wolf-xfce-tools:smoke-test
+          sleep 10
+          if ! docker ps --format '{{.Names}}' | grep -q '^test-xfce$'; then
+            docker logs test-xfce || true
+            docker rm -f test-xfce || true
+            exit 1
+          fi
+          docker rm -f test-xfce
+
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
