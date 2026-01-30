@@ -25,6 +25,7 @@ env = { PUID = "1000", PGID = "1000", USER = "retro", USERNAME = "retro", HOME =
   - Every mountpoint under `/mnt/*` discovered at runtime.
   - Steam library paths from `libraryfolders.vdf`.
 - Adds a Protontricks GUI launcher in the XFCE menu.
+- Adds a manual "Wolf Tools Bootstrap (Run)" desktop entry for debugging.
 
 ## Notes
 
@@ -37,7 +38,9 @@ env = { PUID = "1000", PGID = "1000", USER = "retro", USERNAME = "retro", HOME =
 ## Troubleshooting
 
 - **Steam not detected yet:** Start Steam once, then restart the XFCE session. The bootstrap logs this and exits safely.
-- **Bootstrap logs:** `~/.config/wolf-tools/bootstrap.log`
+- **Bootstrap logs:** `~/.config/wolf-tools/bootstrap.log` (look for `=== bootstrap start ... ===`).
+- **Manual trigger:** Run "Wolf Tools Bootstrap (Run)" from the menu to re-run the bootstrap.
+- **Autostart verification:** `/etc/xdg/autostart/wolf-tools-bootstrap.desktop` should exist in the image.
 - **Verify Flatpak permissions:**
   ```bash
   flatpak --user override --show com.github.Matoking.protontricks
