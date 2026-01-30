@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Wolf Tools Bootstrap (Run)
+Exec=sh -lc '/usr/local/bin/wolf-tools-bootstrap.sh >>"$HOME/.config/wolf-tools/bootstrap.log" 2>&1 || true'
+OnlyShowIn=XFCE;
+Terminal=false
+Categories=Utility;

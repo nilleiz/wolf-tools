@@ -1,19 +1,38 @@
 #!/usr/bin/env bash
 set -u
 
-log_dir="$HOME/.config/wolf-tools"
-log_file="$log_dir/bootstrap.log"
-mkdir -p "$log_dir"
-touch "$log_file"
+LOG_DIR="$HOME/.config/wolf-tools"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/bootstrap.log"
+exec >>"$LOG_FILE" 2>&1
+
+echo "=== wolf-tools bootstrap start $(date -Is) ==="
+echo "USER=$(id -un 2>/dev/null || echo unknown) UID=$(id -u 2>/dev/null || echo unknown) HOME=$HOME"
+touch "$LOG_DIR/last-run"
+date -Is > "$LOG_DIR/last-run"
 
 log() {
-  printf '%s %s\n' "$(date +'%Y-%m-%d %H:%M:%S')" "$*" >>"$log_file"
+  printf '%s %s\n' "$(date +'%Y-%m-%d %H:%M:%S')" "$*"
 }
 
 run_cmd() {
   if ! "$@"; then
     log "Command failed (ignored): $*"
   fi
+}
+
+retry_cmd() {
+  local attempts="$1"
+  shift
+  local i
+  for i in $(seq 1 "$attempts"); do
+    if "$@"; then
+      return 0
+    fi
+    log "Command failed (attempt $i/$attempts): $*"
+    sleep 2
+  done
+  return 1
 }
 
 trap 'status=$?; if [[ $status -ne 0 ]]; then log "Bootstrap exited with status $status (ignored)."; fi; exit 0' EXIT
@@ -29,6 +48,54 @@ while IFS= read -r line; do
 done < <(env | sort)
 
 sleep 2
+
+if command -v flatpak >/dev/null 2>&1; then
+  log "flatpak detected: $(command -v flatpak)"
+  log "flatpak version: $(flatpak --version 2>/dev/null || echo unavailable)"
+else
+  log "flatpak missing"
+fi
+
+flatpak_ready=false
+if command -v flatpak >/dev/null 2>&1; then
+  for i in $(seq 1 15); do
+    if flatpak --user remotes >/dev/null 2>&1; then
+      flatpak_ready=true
+      break
+    fi
+    log "Waiting for flatpak user session ($i/15)"
+    sleep 1
+  done
+fi
+
+if [[ "$flatpak_ready" == "true" ]]; then
+  log "Flatpak user remotes:"
+  flatpak --user remotes || log "Failed to list flatpak remotes"
+  log "Ensuring Flathub remote exists"
+  run_cmd flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+fi
+
+apps=(
+  com.github.Matoking.protontricks
+  com.github.mtkennerly.ludusavi
+)
+
+if [[ "$flatpak_ready" == "true" ]]; then
+  for app in "${apps[@]}"; do
+    if ! flatpak info --user "$app" >/dev/null 2>&1; then
+      log "Installing $app"
+      if ! retry_cmd 3 flatpak --user install -y flathub "$app"; then
+        log "Install failed after retries: $app"
+      fi
+    else
+      log "$app already installed"
+    fi
+  done
+  log "Flatpak user list:"
+  flatpak --user list || log "Failed to list installed Flatpaks"
+else
+  log "Skipping Flatpak install steps because flatpak user session is not ready."
+fi
 
 STEAM_ROOT=""
 steam_candidates=(
@@ -52,50 +119,32 @@ if [[ -z "$STEAM_ROOT" && -d "$HOME/.steam" ]]; then
 fi
 
 if [[ -z "$STEAM_ROOT" ]]; then
-  log "Steam not detected yet; start Steam once and restart XFCE"
-  exit 0
-fi
-
-log "Detected Steam root: $STEAM_ROOT"
-
-canonical_steam="$HOME/.local/share/Steam"
-if [[ "$STEAM_ROOT" == "$canonical_steam" ]]; then
-  mkdir -p "$canonical_steam"
+  log "Steam not detected yet; start Steam once and restart XFCE to apply overrides."
 else
-  if [[ -e "$canonical_steam" && ! -L "$canonical_steam" ]]; then
-    backup_path="${canonical_steam}.backup.$(date +'%Y%m%d%H%M%S')"
-    log "Moving existing Steam directory to $backup_path"
-    run_cmd mv "$canonical_steam" "$backup_path"
-  fi
-  if [[ -L "$canonical_steam" ]]; then
-    current_target="$(readlink "$canonical_steam")"
-    if [[ "$current_target" != "$STEAM_ROOT" ]]; then
-      log "Updating Steam symlink from $current_target to $STEAM_ROOT"
-      run_cmd rm "$canonical_steam"
+  log "Detected Steam root: $STEAM_ROOT"
+
+  canonical_steam="$HOME/.local/share/Steam"
+  if [[ "$STEAM_ROOT" == "$canonical_steam" ]]; then
+    mkdir -p "$canonical_steam"
+  else
+    if [[ -e "$canonical_steam" && ! -L "$canonical_steam" ]]; then
+      backup_path="${canonical_steam}.backup.$(date +'%Y%m%d%H%M%S')"
+      log "Moving existing Steam directory to $backup_path"
+      run_cmd mv "$canonical_steam" "$backup_path"
+    fi
+    if [[ -L "$canonical_steam" ]]; then
+      current_target="$(readlink "$canonical_steam")"
+      if [[ "$current_target" != "$STEAM_ROOT" ]]; then
+        log "Updating Steam symlink from $current_target to $STEAM_ROOT"
+        run_cmd rm "$canonical_steam"
+        run_cmd ln -s "$STEAM_ROOT" "$canonical_steam"
+      fi
+    elif [[ ! -e "$canonical_steam" ]]; then
+      log "Creating Steam symlink at $canonical_steam -> $STEAM_ROOT"
       run_cmd ln -s "$STEAM_ROOT" "$canonical_steam"
     fi
-  elif [[ ! -e "$canonical_steam" ]]; then
-    log "Creating Steam symlink at $canonical_steam -> $STEAM_ROOT"
-    run_cmd ln -s "$STEAM_ROOT" "$canonical_steam"
   fi
 fi
-
-log "Ensuring Flathub remote exists"
-run_cmd flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-
-apps=(
-  com.github.Matoking.protontricks
-  com.github.mtkennerly.ludusavi
-)
-
-for app in "${apps[@]}"; do
-  if ! flatpak info --user "$app" >/dev/null 2>&1; then
-    log "Installing $app"
-    run_cmd flatpak --user install -y flathub "$app"
-  else
-    log "$app already installed"
-  fi
-done
 
 mount_points=()
 if [[ -r /proc/self/mountinfo ]]; then
@@ -137,6 +186,7 @@ else
   log "No /mnt mountpoints discovered"
 fi
 
+canonical_steam="$HOME/.local/share/Steam"
 library_paths=()
 library_file="$canonical_steam/steamapps/libraryfolders.vdf"
 if [[ -f "$library_file" ]]; then
@@ -163,8 +213,11 @@ add_path() {
   filesystem_paths["$path"]=1
 }
 
-add_path "$STEAM_ROOT"
-add_path "$canonical_steam"
+if [[ -n "$STEAM_ROOT" ]]; then
+  canonical_steam="$HOME/.local/share/Steam"
+  add_path "$STEAM_ROOT"
+  add_path "$canonical_steam"
+fi
 for mp in "${mount_points[@]}"; do
   add_path "$mp"
 done
@@ -177,12 +230,16 @@ if [[ ${#filesystem_paths[@]} -gt 0 ]]; then
   mapfile -t sorted_paths < <(printf '%s\n' "${!filesystem_paths[@]}" | sort -u)
 fi
 
-for app in "${apps[@]}"; do
-  for path in "${sorted_paths[@]}"; do
-    run_cmd flatpak --user override --filesystem="$path" "$app"
+if [[ "$flatpak_ready" == "true" && ${#sorted_paths[@]} -gt 0 ]]; then
+  for app in "${apps[@]}"; do
+    for path in "${sorted_paths[@]}"; do
+      run_cmd flatpak --user override --filesystem="$path" "$app"
+    done
+    log "Applied Flatpak filesystem overrides for $app"
   done
-  log "Applied Flatpak filesystem overrides for $app"
-done
+elif [[ "$flatpak_ready" == "true" ]]; then
+  log "No filesystem paths to apply for Flatpak overrides."
+fi
 
 bin_dir="$HOME/bin"
 run_cmd mkdir -p "$bin_dir"
