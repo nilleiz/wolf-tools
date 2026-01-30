@@ -26,6 +26,7 @@ env = { PUID = "1000", PGID = "1000", USER = "retro", USERNAME = "retro", HOME =
   - Steam library paths from `libraryfolders.vdf`.
 - Adds a Protontricks GUI launcher in the XFCE menu.
 - Adds a manual "Wolf Tools Bootstrap (Run)" desktop entry for debugging.
+- Wraps Protontricks to default to `--no-bwrap` in containerized environments.
 
 ## Notes
 
@@ -34,6 +35,7 @@ env = { PUID = "1000", PGID = "1000", USER = "retro", USERNAME = "retro", HOME =
 - A game must be launched at least once to create Proton compatdata prefixes (required for Protontricks).
 - Host storage should be mounted under `/mnt/*` (arbitrary names are supported).
 - Steam installs are typically available at `~/.steam/debian-installation` via Wolf's `profile_data` mount.
+- Protontricks runs with `--no-bwrap` by default to avoid bubblewrap namespace failures in containers. To opt back into bwrap, run `flatpak run com.github.Matoking.protontricks` directly or remove the flag from `~/bin/protontricks` and `~/bin/protontricks-gui`.
 
 ## Troubleshooting
 
