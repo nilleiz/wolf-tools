@@ -93,6 +93,7 @@ if [[ "$flatpak_ready" == "true" ]]; then
   done
   log "Flatpak user list:"
   flatpak --user list || log "Failed to list installed Flatpaks"
+  log "Protontricks version: $(flatpak run com.github.Matoking.protontricks --version 2>/dev/null || echo unavailable)"
 else
   log "Skipping Flatpak install steps because flatpak user session is not ready."
 fi
@@ -248,15 +249,21 @@ cat <<'PROTONTRICKS_GUI' > "$protontricks_gui"
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ -d "$HOME/.local/share/Steam/steamapps" ]]; then
-  steam_dir="$HOME/.local/share/Steam"
-elif [[ -d "$HOME/.steam/debian-installation/steamapps" ]]; then
+steam_dir=""
+if [[ -d "$HOME/.steam/debian-installation" ]]; then
   steam_dir="$HOME/.steam/debian-installation"
-else
-  steam_dir="$HOME/.steam"
+elif [[ -d "$HOME/.steam/steam" ]]; then
+  steam_dir="$HOME/.steam/steam"
+elif [[ -d "$HOME/.local/share/Steam" ]]; then
+  steam_dir="$HOME/.local/share/Steam"
 fi
 
-exec flatpak run --env=STEAM_DIR="$steam_dir" --env=GTK_USE_PORTAL=0 com.github.Matoking.protontricks --gui "$@"
+if [[ -n "$steam_dir" ]]; then
+  export STEAM_DIR="$steam_dir"
+fi
+export GTK_USE_PORTAL=0
+
+exec flatpak run com.github.Matoking.protontricks --no-bwrap --gui "$@"
 PROTONTRICKS_GUI
 run_cmd chmod 0755 "$protontricks_gui"
 
@@ -265,24 +272,49 @@ cat <<'PROTONTRICKS_CLI' > "$protontricks_cli"
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ -d "$HOME/.local/share/Steam/steamapps" ]]; then
-  steam_dir="$HOME/.local/share/Steam"
-elif [[ -d "$HOME/.steam/debian-installation/steamapps" ]]; then
+steam_dir=""
+if [[ -d "$HOME/.steam/debian-installation" ]]; then
   steam_dir="$HOME/.steam/debian-installation"
-else
-  steam_dir="$HOME/.steam"
+elif [[ -d "$HOME/.steam/steam" ]]; then
+  steam_dir="$HOME/.steam/steam"
+elif [[ -d "$HOME/.local/share/Steam" ]]; then
+  steam_dir="$HOME/.local/share/Steam"
 fi
 
-exec flatpak run --env=STEAM_DIR="$steam_dir" --env=GTK_USE_PORTAL=0 com.github.Matoking.protontricks "$@"
+if [[ -n "$steam_dir" ]]; then
+  export STEAM_DIR="$steam_dir"
+fi
+export GTK_USE_PORTAL=0
+
+exec flatpak run com.github.Matoking.protontricks --no-bwrap "$@"
 PROTONTRICKS_CLI
 run_cmd chmod 0755 "$protontricks_cli"
+log "Protontricks wrappers present: gui=$protontricks_gui cli=$protontricks_cli"
+
+wrapper_steam_dir=""
+if [[ -d "$HOME/.steam/debian-installation" ]]; then
+  wrapper_steam_dir="$HOME/.steam/debian-installation"
+elif [[ -d "$HOME/.steam/steam" ]]; then
+  wrapper_steam_dir="$HOME/.steam/steam"
+elif [[ -d "$HOME/.local/share/Steam" ]]; then
+  wrapper_steam_dir="$HOME/.local/share/Steam"
+fi
+log "Protontricks wrapper STEAM_DIR: ${wrapper_steam_dir:-unset}"
+
+env_dir="$HOME/.config/environment.d"
+run_cmd mkdir -p "$env_dir"
+env_file="$env_dir/10-wolf-tools.conf"
+cat <<ENV_FILE > "$env_file"
+PATH=$HOME/bin:$PATH
+ENV_FILE
+log "Ensured PATH includes \$HOME/bin via $env_file"
 
 applications_dir="$HOME/.local/share/applications"
 run_cmd mkdir -p "$applications_dir"
 cat <<'DESKTOP_ENTRY' > "$applications_dir/protontricks-gui.desktop"
 [Desktop Entry]
 Type=Application
-Name=Protontricks (GUI)
+Name=Protontricks (Container Safe)
 Exec=/home/retro/bin/protontricks-gui
 Icon=com.github.Matoking.protontricks
 Categories=Game;Utility;
