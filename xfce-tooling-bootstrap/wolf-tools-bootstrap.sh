@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 set -u
 
-log_dir="$HOME/.config/wolf-tools"
-log_file="$log_dir/bootstrap.log"
-mkdir -p "$log_dir"
-touch "$log_file"
-printf '=== bootstrap start %s ===\n' "$(date -Is)" >>"$log_file"
+LOG_DIR="$HOME/.config/wolf-tools"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/bootstrap.log"
+exec >>"$LOG_FILE" 2>&1
+
+echo "=== wolf-tools bootstrap start $(date -Is) ==="
+echo "USER=$(id -un 2>/dev/null || echo unknown) UID=$(id -u 2>/dev/null || echo unknown) HOME=$HOME"
+touch "$LOG_DIR/last-run"
+date -Is > "$LOG_DIR/last-run"
 
 log() {
-  printf '%s %s\n' "$(date +'%Y-%m-%d %H:%M:%S')" "$*" >>"$log_file"
+  printf '%s %s\n' "$(date +'%Y-%m-%d %H:%M:%S')" "$*"
 }
 
 run_cmd() {
@@ -54,19 +58,19 @@ fi
 
 flatpak_ready=false
 if command -v flatpak >/dev/null 2>&1; then
-  for i in $(seq 1 30); do
+  for i in $(seq 1 15); do
     if flatpak --user remotes >/dev/null 2>&1; then
       flatpak_ready=true
       break
     fi
-    log "Waiting for flatpak user session ($i/30)"
+    log "Waiting for flatpak user session ($i/15)"
     sleep 1
   done
 fi
 
 if [[ "$flatpak_ready" == "true" ]]; then
   log "Flatpak user remotes:"
-  flatpak --user remotes >>"$log_file" 2>&1 || log "Failed to list flatpak remotes"
+  flatpak --user remotes || log "Failed to list flatpak remotes"
   log "Ensuring Flathub remote exists"
   run_cmd flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 fi
@@ -88,7 +92,7 @@ if [[ "$flatpak_ready" == "true" ]]; then
     fi
   done
   log "Flatpak user list:"
-  flatpak --user list >>"$log_file" 2>&1 || log "Failed to list installed Flatpaks"
+  flatpak --user list || log "Failed to list installed Flatpaks"
 else
   log "Skipping Flatpak install steps because flatpak user session is not ready."
 fi
