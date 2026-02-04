@@ -100,11 +100,12 @@ run_capture() {
 progress_pid=""
 progress_fd=""
 progress_fifo=""
+notice_pid=""
 start_progress() {
   if command -v zenity >/dev/null 2>&1; then
     progress_fifo="$(mktemp -u "${XDG_RUNTIME_DIR:-/tmp}/wolf-tools-progress.XXXX")"
     if mkfifo "$progress_fifo"; then
-      zenity --progress --pulsate --no-cancel --auto-close \
+      GTK_USE_PORTAL=0 zenity --progress --pulsate --no-cancel --auto-close \
         --title="Wolf Tools" \
         --text="Setting up Protontricks + Ludusavi…" <"$progress_fifo" &
       progress_pid=$!
@@ -132,6 +133,20 @@ start_progress() {
   fi
 }
 
+start_notice() {
+  if command -v zenity >/dev/null 2>&1; then
+    GTK_USE_PORTAL=0 zenity --info --title="Wolf Tools" \
+      --text="Setting up environment, please wait. This can take some time." \
+      --no-wrap --no-markup &
+    notice_pid=$!
+    sleep 0.5
+    if [[ -n "$notice_pid" ]] && ! kill -0 "$notice_pid" 2>/dev/null; then
+      log "Zenity notice exited early; continuing without notice."
+      notice_pid=""
+    fi
+  fi
+}
+
 progress_update() {
   if [[ -n "$progress_fd" ]]; then
     if [[ -n "$progress_pid" ]] && ! kill -0 "$progress_pid" 2>/dev/null; then
@@ -144,6 +159,10 @@ progress_update() {
 }
 
 stop_progress() {
+  if [[ -n "$notice_pid" ]]; then
+    kill "$notice_pid" 2>/dev/null || true
+    wait "$notice_pid" 2>/dev/null || true
+  fi
   if [[ -n "$progress_fd" ]]; then
     exec {progress_fd}>&-
   fi
@@ -158,6 +177,7 @@ stop_progress() {
 
 trap 'stop_progress' EXIT
 wait_for_session_ready || true
+start_notice
 start_progress
 
 degraded=false
@@ -210,7 +230,7 @@ cat <<'DESKTOP' >"$applications_dir/protontricks.desktop"
 [Desktop Entry]
 Type=Application
 Name=Protontricks
-Exec=/usr/bin/env bash -lc 'flatpak_opts=(); if flatpak run --help 2>/dev/null | grep -q -- --no-document-portal; then flatpak_opts+=(--no-document-portal); fi; flatpak run "${flatpak_opts[@]}" --env=GTK_USE_PORTAL=0 --env=GIO_USE_VFS=local --env=GDK_BACKEND=x11 --env=STEAM_DIR=$HOME/.steam/debian-installation com.github.Matoking.protontricks --gui'
+Exec=/usr/bin/env bash -lc 'flatpak_opts=(); if flatpak run --help 2>/dev/null | grep -q -- --no-document-portal; then flatpak_opts+=(--no-document-portal); fi; flatpak run "${flatpak_opts[@]}" --env=FLATPAK_DISABLE_DOCUMENT_PORTAL=1 --env=GTK_USE_PORTAL=0 --env=GIO_USE_VFS=local --env=GDK_BACKEND=x11 --env=STEAM_DIR=$HOME/.steam/debian-installation com.github.Matoking.protontricks --gui'
 Icon=com.github.Matoking.protontricks
 Terminal=false
 Categories=Game;Utility;
@@ -220,7 +240,7 @@ cat <<'DESKTOP' >"$applications_dir/ludusavi.desktop"
 [Desktop Entry]
 Type=Application
 Name=Ludusavi
-Exec=/usr/bin/env bash -lc 'flatpak_opts=(); if flatpak run --help 2>/dev/null | grep -q -- --no-document-portal; then flatpak_opts+=(--no-document-portal); fi; flatpak run "${flatpak_opts[@]}" --env=GTK_USE_PORTAL=0 --env=GIO_USE_VFS=local --env=GDK_BACKEND=x11 com.github.mtkennerly.ludusavi'
+Exec=/usr/bin/env bash -lc 'flatpak_opts=(); if flatpak run --help 2>/dev/null | grep -q -- --no-document-portal; then flatpak_opts+=(--no-document-portal); fi; flatpak run "${flatpak_opts[@]}" --env=FLATPAK_DISABLE_DOCUMENT_PORTAL=1 --env=GTK_USE_PORTAL=0 --env=GIO_USE_VFS=local --env=GDK_BACKEND=x11 com.github.mtkennerly.ludusavi'
 Icon=com.github.mtkennerly.ludusavi
 Terminal=false
 Categories=Game;Utility;
@@ -257,7 +277,7 @@ fi
 
 stop_progress
 if command -v zenity >/dev/null 2>&1; then
-  zenity --info --title="Wolf Tools" --text="Setup complete"
+  GTK_USE_PORTAL=0 zenity --info --title="Wolf Tools" --text="Setup complete"
 fi
 
 echo "[wolf-tools] firstboot end"
