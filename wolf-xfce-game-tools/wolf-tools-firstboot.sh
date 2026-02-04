@@ -27,6 +27,7 @@ log() {
 }
 
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
 if [[ ! -d "$XDG_RUNTIME_DIR" ]]; then
   mkdir -p "$XDG_RUNTIME_DIR"
 fi
@@ -111,6 +112,17 @@ start_progress() {
         echo "# Setting up Protontricks + Ludusavi…" >&"$progress_fd" || true
       else
         log "Failed to open progress fifo; continuing without UI."
+      fi
+      sleep 0.5
+      if [[ -n "$progress_pid" ]] && ! kill -0 "$progress_pid" 2>/dev/null; then
+        log "Zenity progress exited early; continuing without UI."
+        if [[ -n "$progress_fd" ]]; then
+          exec {progress_fd}>&-
+          progress_fd=""
+        fi
+        rm -f "$progress_fifo"
+        progress_fifo=""
+        progress_pid=""
       fi
     else
       log "Failed to create progress fifo; continuing without UI."
@@ -198,7 +210,7 @@ cat <<'DESKTOP' >"$applications_dir/protontricks.desktop"
 [Desktop Entry]
 Type=Application
 Name=Protontricks
-Exec=/usr/bin/env bash -lc 'flatpak run --no-document-portal --env=GTK_USE_PORTAL=0 --env=GIO_USE_VFS=local --env=GDK_BACKEND=x11 --env=STEAM_DIR=$HOME/.steam/debian-installation com.github.Matoking.protontricks --gui'
+Exec=/usr/bin/env bash -lc 'flatpak_opts=(); if flatpak run --help 2>/dev/null | grep -q -- --no-document-portal; then flatpak_opts+=(--no-document-portal); fi; flatpak run "${flatpak_opts[@]}" --env=GTK_USE_PORTAL=0 --env=GIO_USE_VFS=local --env=GDK_BACKEND=x11 --env=STEAM_DIR=$HOME/.steam/debian-installation com.github.Matoking.protontricks --gui'
 Icon=com.github.Matoking.protontricks
 Terminal=false
 Categories=Game;Utility;
@@ -208,7 +220,7 @@ cat <<'DESKTOP' >"$applications_dir/ludusavi.desktop"
 [Desktop Entry]
 Type=Application
 Name=Ludusavi
-Exec=/usr/bin/env bash -lc 'flatpak run --no-document-portal --env=GTK_USE_PORTAL=0 --env=GIO_USE_VFS=local --env=GDK_BACKEND=x11 com.github.mtkennerly.ludusavi'
+Exec=/usr/bin/env bash -lc 'flatpak_opts=(); if flatpak run --help 2>/dev/null | grep -q -- --no-document-portal; then flatpak_opts+=(--no-document-portal); fi; flatpak run "${flatpak_opts[@]}" --env=GTK_USE_PORTAL=0 --env=GIO_USE_VFS=local --env=GDK_BACKEND=x11 com.github.mtkennerly.ludusavi'
 Icon=com.github.mtkennerly.ludusavi
 Terminal=false
 Categories=Game;Utility;
