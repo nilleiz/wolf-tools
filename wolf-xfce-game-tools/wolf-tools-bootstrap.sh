@@ -8,6 +8,10 @@ exec >>"$LOG_FILE" 2>&1
 
 echo "=== wolf-tools bootstrap start $(date -Is) ==="
 echo "USER=$(id -un 2>/dev/null || echo unknown) UID=$(id -u 2>/dev/null || echo unknown) HOME=$HOME"
+first_run=false
+if [[ ! -f "$LOG_DIR/last-run" ]]; then
+  first_run=true
+fi
 touch "$LOG_DIR/last-run"
 date -Is > "$LOG_DIR/last-run"
 
@@ -46,6 +50,9 @@ log "Environment:"
 while IFS= read -r line; do
   log "env: $line"
 done < <(env | sort)
+if [[ "$first_run" == "true" ]]; then
+  log "Note: For non-Steam shortcuts, Ludusavi autodetection depends on the Steam shortcut name matching the PCGamingWiki title (e.g. rename 'ManorLords.exe' to 'Manor Lords')."
+fi
 
 sleep 2
 
@@ -108,18 +115,11 @@ steam_candidates=(
 )
 
 for candidate in "${steam_candidates[@]}"; do
-  if [[ -d "$candidate/steamapps" ]]; then
+  if [[ -f "$candidate/steamapps/libraryfolders.vdf" ]]; then
     STEAM_ROOT="$candidate"
     break
   fi
 done
-
-if [[ -z "$STEAM_ROOT" && -d "$HOME/.steam" ]]; then
-  steamapps_path="$(find "$HOME/.steam" -maxdepth 4 -type d -name steamapps 2>/dev/null | head -n 1 || true)"
-  if [[ -n "$steamapps_path" ]]; then
-    STEAM_ROOT="$(dirname "$steamapps_path")"
-  fi
-fi
 
 if [[ -z "$STEAM_ROOT" ]]; then
   log "Steam not detected yet; start Steam once and restart XFCE to apply overrides."
@@ -127,25 +127,15 @@ else
   log "Detected Steam root: $STEAM_ROOT"
 
   canonical_steam="$HOME/.local/share/Steam"
-  if [[ "$STEAM_ROOT" == "$canonical_steam" ]]; then
-    mkdir -p "$canonical_steam"
+  run_cmd mkdir -p "$HOME/.local/share"
+  if [[ -w "$HOME/.local/share" ]]; then
+    if ln -sfn "$STEAM_ROOT" "$canonical_steam" 2>/dev/null; then
+      log "Ensured Steam symlink at $canonical_steam -> $STEAM_ROOT"
+    else
+      log "Unable to create Steam symlink at $canonical_steam (not writable?)."
+    fi
   else
-    if [[ -e "$canonical_steam" && ! -L "$canonical_steam" ]]; then
-      backup_path="${canonical_steam}.backup.$(date +'%Y%m%d%H%M%S')"
-      log "Moving existing Steam directory to $backup_path"
-      run_cmd mv "$canonical_steam" "$backup_path"
-    fi
-    if [[ -L "$canonical_steam" ]]; then
-      current_target="$(readlink "$canonical_steam")"
-      if [[ "$current_target" != "$STEAM_ROOT" ]]; then
-        log "Updating Steam symlink from $current_target to $STEAM_ROOT"
-        run_cmd rm "$canonical_steam"
-        run_cmd ln -s "$STEAM_ROOT" "$canonical_steam"
-      fi
-    elif [[ ! -e "$canonical_steam" ]]; then
-      log "Creating Steam symlink at $canonical_steam -> $STEAM_ROOT"
-      run_cmd ln -s "$STEAM_ROOT" "$canonical_steam"
-    fi
+    log "Cannot write to $HOME/.local/share; skipping Steam symlink."
   fi
 fi
 
@@ -191,11 +181,16 @@ fi
 
 canonical_steam="$HOME/.local/share/Steam"
 library_paths=()
-library_file="$canonical_steam/steamapps/libraryfolders.vdf"
-if [[ -f "$library_file" ]]; then
+library_file=""
+if [[ -n "$STEAM_ROOT" ]]; then
+  library_file="$STEAM_ROOT/steamapps/libraryfolders.vdf"
+fi
+if [[ -n "$library_file" && -f "$library_file" ]]; then
   while IFS= read -r path; do
     [[ -n "$path" ]] || continue
-    library_paths+=("$path")
+    if [[ -d "$path" ]]; then
+      library_paths+=("$path")
+    fi
   done < <(
     grep -E '"path"' "$library_file" | \
       sed -E 's/.*"path"[[:space:]]*"([^"]+)".*/\1/' | \
@@ -203,10 +198,12 @@ if [[ -f "$library_file" ]]; then
       sort -u
   )
   if [[ ${#library_paths[@]} -gt 0 ]]; then
-    log "Discovered Steam library paths: ${library_paths[*]}"
+    log "Discovered Steam library roots from VDF: ${library_paths[*]}"
+  else
+    log "No existing Steam library roots found in $library_file"
   fi
 else
-  log "Steam library list not found yet at $library_file"
+  log "Steam library list not found yet at ${library_file:-unknown}"
 fi
 
 declare -A protontricks_paths=()
@@ -238,12 +235,7 @@ for lp in "${library_paths[@]}"; do
   add_path ludusavi_paths "$lp/steamapps/compatdata"
 done
 
-if [[ -d "$HOME/.local/share/Steam" ]]; then
-  add_path ludusavi_paths "$HOME/.local/share/Steam"
-fi
-if [[ -d "$HOME/.steam/debian-installation" ]]; then
-  add_path ludusavi_paths "$HOME/.steam/debian-installation"
-fi
+add_path ludusavi_paths "$HOME/.local/share/Steam"
 
 sorted_protontricks_paths=()
 sorted_ludusavi_paths=()
@@ -274,7 +266,14 @@ if [[ "$flatpak_ready" == "true" ]]; then
   else
     log "No filesystem paths to apply for Ludusavi overrides."
   fi
-  log "Ludusavi permissions: $(flatpak info --show-permissions "$ludusavi_app" 2>/dev/null || echo unavailable)"
+  log "Ludusavi permissions:"
+  if flatpak info --show-permissions "$ludusavi_app" >/dev/null 2>&1; then
+    while IFS= read -r line; do
+      log "  $line"
+    done < <(flatpak info --show-permissions "$ludusavi_app")
+  else
+    log "  unavailable"
+  fi
 fi
 
 bin_dir="$HOME/bin"
@@ -353,26 +352,32 @@ steam_candidates=(
 )
 
 for candidate in "${steam_candidates[@]}"; do
-  if [[ -d "$candidate/steamapps" ]]; then
+  if [[ -f "$candidate/steamapps/libraryfolders.vdf" ]]; then
     STEAM_ROOT="$candidate"
     break
   fi
 done
 
-if [[ -z "$STEAM_ROOT" && -d "$HOME/.steam" ]]; then
-  steamapps_path="$(find "$HOME/.steam" -maxdepth 4 -type d -name steamapps 2>/dev/null | head -n 1 || true)"
-  if [[ -n "$steamapps_path" ]]; then
-    STEAM_ROOT="$(dirname "$steamapps_path")"
+canonical_steam="$HOME/.local/share/Steam"
+if [[ -n "$STEAM_ROOT" ]]; then
+  mkdir -p "$HOME/.local/share" 2>/dev/null || true
+  if ln -sfn "$STEAM_ROOT" "$canonical_steam" 2>/dev/null; then
+    log "Ensured Steam symlink at $canonical_steam -> $STEAM_ROOT"
+  else
+    log "Unable to create Steam symlink at $canonical_steam"
   fi
 fi
-
-canonical_steam="$HOME/.local/share/Steam"
 library_paths=()
-library_file="$canonical_steam/steamapps/libraryfolders.vdf"
-if [[ -f "$library_file" ]]; then
+library_file=""
+if [[ -n "$STEAM_ROOT" ]]; then
+  library_file="$STEAM_ROOT/steamapps/libraryfolders.vdf"
+fi
+if [[ -n "$library_file" && -f "$library_file" ]]; then
   while IFS= read -r path; do
     [[ -n "$path" ]] || continue
-    library_paths+=("$path")
+    if [[ -d "$path" ]]; then
+      library_paths+=("$path")
+    fi
   done < <(
     grep -E '"path"' "$library_file" | \
       sed -E 's/.*"path"[[:space:]]*"([^"]+)".*/\1/' | \
@@ -400,9 +405,6 @@ done
 
 if [[ -d "$canonical_steam" ]]; then
   add_path "$canonical_steam"
-fi
-if [[ -d "$HOME/.steam/debian-installation" ]]; then
-  add_path "$HOME/.steam/debian-installation"
 fi
 
 sorted_paths=()
@@ -452,28 +454,25 @@ steam_candidates=(
 )
 
 for candidate in "${steam_candidates[@]}"; do
-  if [[ -d "$candidate/steamapps" ]]; then
+  if [[ -f "$candidate/steamapps/libraryfolders.vdf" ]]; then
     STEAM_ROOT="$candidate"
     break
   fi
 done
 
-if [[ -z "$STEAM_ROOT" && -d "$HOME/.steam" ]]; then
-  steamapps_path="$(find "$HOME/.steam" -maxdepth 4 -type d -name steamapps 2>/dev/null | head -n 1 || true)"
-  if [[ -n "$steamapps_path" ]]; then
-    STEAM_ROOT="$(dirname "$steamapps_path")"
-  fi
-fi
-
 echo "STEAM_ROOT=${STEAM_ROOT:-unset}"
 
-canonical_steam="$HOME/.local/share/Steam"
-library_file="$canonical_steam/steamapps/libraryfolders.vdf"
+library_file=""
+if [[ -n "$STEAM_ROOT" ]]; then
+  library_file="$STEAM_ROOT/steamapps/libraryfolders.vdf"
+fi
 library_paths=()
-if [[ -f "$library_file" ]]; then
+if [[ -n "$library_file" && -f "$library_file" ]]; then
   while IFS= read -r path; do
     [[ -n "$path" ]] || continue
-    library_paths+=("$path")
+    if [[ -d "$path" ]]; then
+      library_paths+=("$path")
+    fi
   done < <(
     grep -E '"path"' "$library_file" | \
       sed -E 's/.*"path"[[:space:]]*"([^"]+)".*/\1/' | \
@@ -540,7 +539,7 @@ DESKTOP_ENTRY
 cat <<'DESKTOP_ENTRY' > "$applications_dir/ludusavi-steam.desktop"
 [Desktop Entry]
 Type=Application
-Name=Ludusavi (Steam scoped)
+Name=Ludusavi (Steam)
 Exec=/home/retro/bin/ludusavi-steam
 Icon=com.github.mtkennerly.ludusavi
 Categories=Game;Utility;
