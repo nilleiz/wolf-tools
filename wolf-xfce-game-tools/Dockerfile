@@ -26,10 +26,12 @@ RUN if ! command -v flatpak >/dev/null 2>&1; then \
   fi
 
 COPY wolf-tools-bootstrap.sh /usr/local/bin/wolf-tools-bootstrap.sh
+COPY 20-wolf-tools-bootstrap.sh /etc/cont-init.d/20-wolf-tools-bootstrap.sh
 COPY wolf-tools-bootstrap.desktop /etc/xdg/autostart/wolf-tools-bootstrap.desktop
 COPY wolf-tools-bootstrap-run.desktop /usr/share/applications/wolf-tools-bootstrap-run.desktop
 
 RUN chmod 0755 /usr/local/bin/wolf-tools-bootstrap.sh \
+  && chmod 0755 /etc/cont-init.d/20-wolf-tools-bootstrap.sh \
   && chmod 0644 /etc/xdg/autostart/wolf-tools-bootstrap.desktop \
   && chmod 0644 /usr/share/applications/wolf-tools-bootstrap-run.desktop \
   && mkdir -p /tmp/.X11-unix /run/user/1000 \
@@ -38,6 +40,7 @@ RUN chmod 0755 /usr/local/bin/wolf-tools-bootstrap.sh \
   && chown 1000:1000 /run/user/1000 \
   && bash -n /etc/cont-init.d/10-setup_user.sh \
   && test -x /usr/local/bin/wolf-tools-bootstrap.sh \
+  && test -x /etc/cont-init.d/20-wolf-tools-bootstrap.sh \
   && test -f /etc/xdg/autostart/wolf-tools-bootstrap.desktop \
   && test -f /usr/share/applications/wolf-tools-bootstrap-run.desktop \
   && cat /etc/xdg/autostart/wolf-tools-bootstrap.desktop

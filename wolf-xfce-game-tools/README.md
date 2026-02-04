@@ -1,6 +1,6 @@
 # Wolf XFCE Tools Bootstrap
 
-This image extends the official Wolf XFCE image and adds a bootstrap that installs Protontricks and Ludusavi via Flatpak on first desktop start. It configures Flatpak filesystem permissions for Steam (plus `/mnt/*` mounts for Protontricks), creates ready-to-use Protontricks launchers, and provides a Steam-scoped Ludusavi wrapper to avoid runaway scans in container environments.
+This image extends the official Wolf XFCE image and adds a bootstrap that installs Protontricks and Ludusavi via Flatpak before the XFCE session starts. It configures Flatpak filesystem permissions for Steam (plus `/mnt/*` mounts for Protontricks), creates ready-to-use Protontricks launchers, and provides a Steam-scoped Ludusavi wrapper to avoid runaway scans in container environments.
 
 ## Image
 
@@ -18,14 +18,14 @@ env = { PUID = "1000", PGID = "1000", USER = "retro", USERNAME = "retro", HOME =
 
 ## What it does
 
-- Installs Protontricks and Ludusavi via Flatpak (user scope) on the first desktop start.
+- Installs Protontricks and Ludusavi via Flatpak (user scope) before the first desktop session so menu entries are ready immediately.
 - Adds Flatpak filesystem overrides for Protontricks covering:
   - The detected Steam root.
   - `~/.local/share/Steam` (canonical Steam path).
   - Every mountpoint under `/mnt/*` discovered at runtime.
   - Steam library paths from `libraryfolders.vdf`.
 - Adds a Steam-scoped Ludusavi wrapper that resets overrides and grants access only to `steamapps` and `compatdata` locations plus minimal Steam metadata directories from `libraryfolders.vdf`.
-- Adds Protontricks GUI launchers and a Ludusavi (Steam) launcher in the XFCE menu.
+- Overrides the Flatpak desktop entries with `~/.local/share/applications/com.github.Matoking.protontricks.desktop` and `~/.local/share/applications/com.github.mtkennerly.ludusavi.desktop` so the XFCE menu shows only the working launchers with original names.
 - Adds a manual "Wolf Tools Bootstrap (Run)" desktop entry for debugging.
 - Wraps Protontricks to default to `--no-bwrap` in containerized environments.
 - Adds a diagnostic helper at `~/bin/ludusavi-dump-steam-paths` to list detected Steam roots, library folders, compatdata directories, and appmanifest counts.
@@ -38,15 +38,16 @@ env = { PUID = "1000", PGID = "1000", USER = "retro", USERNAME = "retro", HOME =
 - Host storage should be mounted under `/mnt/*` (arbitrary names are supported).
 - Steam installs are typically available at `~/.steam/debian-installation` via Wolf's `profile_data` mount.
 - Protontricks runs with `--no-bwrap` by default to avoid bubblewrap namespace failures in containers. To opt back into bwrap, run `flatpak run com.github.Matoking.protontricks` directly or remove the flag from `~/bin/protontricks` and `~/bin/protontricks-gui`.
-- For Ludusavi, prefer launching "Ludusavi (Steam)" so Flatpak permissions stay minimal and backup previews finish promptly.
+- For Ludusavi, launch the standard menu entry so Flatpak permissions stay minimal and backup previews finish promptly.
 - For non-Steam shortcuts, Ludusavi autodetection depends on the Steam shortcut name matching the PCGamingWiki title (e.g. rename “ManorLords.exe” to “Manor Lords”).
 
 ## Troubleshooting
 
-- **Steam not detected yet:** Start Steam once, then restart the XFCE session. The bootstrap logs this and exits safely.
+- **Steam not detected yet:** Start Steam once, then re-run the bootstrap (from "Wolf Tools Bootstrap (Run)") to apply overrides. The bootstrap logs this and exits safely.
 - **Bootstrap logs:** `~/.config/wolf-tools/bootstrap.log` (look for `=== bootstrap start ... ===`).
 - **Manual trigger:** Run "Wolf Tools Bootstrap (Run)" from the menu to re-run the bootstrap.
-- **Autostart verification:** `/etc/xdg/autostart/wolf-tools-bootstrap.desktop` should exist in the image.
+- **Pre-session hook verification:** `/etc/cont-init.d/20-wolf-tools-bootstrap.sh` should exist and be executable in the image.
+- **Autostart fallback verification:** `/etc/xdg/autostart/wolf-tools-bootstrap.desktop` should exist in the image.
 - **Verify Flatpak permissions:**
   ```bash
   flatpak --user override --show com.github.Matoking.protontricks
