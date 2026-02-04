@@ -222,16 +222,19 @@ set -euo pipefail
 export GTK_USE_PORTAL=0
 export GIO_USE_VFS=local
 
-no_bwrap_flag=()
-if [[ "${PROTONTRICKS_NO_BWRAP:-}" == "1" ]]; then
-  no_bwrap_flag+=(--no-bwrap)
+# Default to --no-bwrap because non-setuid bubblewrap needs unprivileged
+# user namespaces that are often unavailable on container hosts. Set
+# WOLF_TOOLS_PROTONTRICKS_BWRAP=1 to opt back into bwrap.
+protontricks_bwrap_flag=(--no-bwrap)
+if [[ "${WOLF_TOOLS_PROTONTRICKS_BWRAP:-}" == "1" ]]; then
+  protontricks_bwrap_flag=()
 fi
 
 exec flatpak run \
   --env=STEAM_DIR=/home/retro/.steam/debian-installation \
   --env=GTK_USE_PORTAL=0 \
   --env=GIO_USE_VFS=local \
-  com.github.Matoking.protontricks "${no_bwrap_flag[@]}" --gui "$@"
+  com.github.Matoking.protontricks "${protontricks_bwrap_flag[@]}" --gui "$@"
 PROTONTRICKS_GUI
 chmod 0755 "$protontricks_gui"
 

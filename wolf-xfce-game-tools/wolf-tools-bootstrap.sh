@@ -302,7 +302,15 @@ if [[ -n "$steam_dir" ]]; then
 fi
 export GTK_USE_PORTAL=0
 
-exec flatpak run com.github.Matoking.protontricks --no-bwrap --gui "$@"
+# Default to --no-bwrap because non-setuid bubblewrap needs unprivileged
+# user namespaces that are often unavailable on container hosts. Set
+# WOLF_TOOLS_PROTONTRICKS_BWRAP=1 to opt back into bwrap.
+protontricks_bwrap_flag=(--no-bwrap)
+if [[ "${WOLF_TOOLS_PROTONTRICKS_BWRAP:-}" == "1" ]]; then
+  protontricks_bwrap_flag=()
+fi
+
+exec flatpak run com.github.Matoking.protontricks "${protontricks_bwrap_flag[@]}" --gui "$@"
 PROTONTRICKS_GUI
 run_cmd chmod 0755 "$protontricks_gui"
 
@@ -325,7 +333,12 @@ if [[ -n "$steam_dir" ]]; then
 fi
 export GTK_USE_PORTAL=0
 
-exec flatpak run com.github.Matoking.protontricks --no-bwrap "$@"
+protontricks_bwrap_flag=(--no-bwrap)
+if [[ "${WOLF_TOOLS_PROTONTRICKS_BWRAP:-}" == "1" ]]; then
+  protontricks_bwrap_flag=()
+fi
+
+exec flatpak run com.github.Matoking.protontricks "${protontricks_bwrap_flag[@]}" "$@"
 PROTONTRICKS_CLI
 run_cmd chmod 0755 "$protontricks_cli"
 log "Protontricks wrappers present: gui=$protontricks_gui cli=$protontricks_cli"
