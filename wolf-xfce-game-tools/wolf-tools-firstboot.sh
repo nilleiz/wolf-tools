@@ -241,7 +241,7 @@ cat <<'DESKTOP' >"$applications_dir/protontricks.desktop"
 [Desktop Entry]
 Type=Application
 Name=Protontricks
-Exec=/usr/bin/env bash -lc 'flatpak_opts=(); if flatpak run --help 2>/dev/null | grep -q -- --no-document-portal; then flatpak_opts+=(--no-document-portal); fi; if flatpak run --help 2>/dev/null | grep -q -- --no-sandbox; then flatpak_opts+=(--no-sandbox); fi; flatpak run "${flatpak_opts[@]}" --env=FLATPAK_DISABLE_DOCUMENT_PORTAL=1 --env=GTK_USE_PORTAL=0 --env=GIO_USE_VFS=local --env=GDK_BACKEND=x11 --env=STEAM_DIR=$HOME/.steam/debian-installation com.github.Matoking.protontricks --gui'
+Exec=/usr/bin/env bash -lc 'flatpak_opts=(); if flatpak run --help 2>/dev/null | grep -q -- --no-document-portal; then flatpak_opts+=(--no-document-portal); fi; if flatpak run --help 2>/dev/null | grep -q -- --no-sandbox; then flatpak_opts+=(--no-sandbox); fi; bwrap_flag=(); if [[ "${WOLF_TOOLS_PROTONTRICKS_BWRAP:-}" != "1" ]]; then bwrap_flag+=(--no-bwrap); fi; flatpak run "${flatpak_opts[@]}" --env=FLATPAK_DISABLE_DOCUMENT_PORTAL=1 --env=GTK_USE_PORTAL=0 --env=GIO_USE_VFS=local --env=GDK_BACKEND=x11 --env=STEAM_DIR=$HOME/.steam/debian-installation com.github.Matoking.protontricks "${bwrap_flag[@]}" --gui'
 Icon=com.github.Matoking.protontricks
 Terminal=false
 Categories=Game;Utility;
