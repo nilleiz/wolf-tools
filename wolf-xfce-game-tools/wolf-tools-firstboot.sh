@@ -4,6 +4,7 @@ set -o pipefail
 set -x
 
 trap 'echo "[wolf-tools] bootstrap failed at line $LINENO"' ERR
+trap '' PIPE
 
 log_dir="$HOME/.config/wolf-tools"
 mkdir -p "$log_dir"
@@ -121,6 +122,11 @@ start_progress() {
 
 progress_update() {
   if [[ -n "$progress_fd" ]]; then
+    if [[ -n "$progress_pid" ]] && ! kill -0 "$progress_pid" 2>/dev/null; then
+      exec {progress_fd}>&-
+      progress_fd=""
+      return 0
+    fi
     echo "# $*" >&"$progress_fd" || true
   fi
 }
