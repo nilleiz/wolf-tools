@@ -75,13 +75,15 @@ if [[ "$flatpak_ready" == "true" ]]; then
   run_cmd flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 fi
 
-apps=(
-  com.github.Matoking.protontricks
-  com.github.mtkennerly.ludusavi
+protontricks_app="com.github.Matoking.protontricks"
+ludusavi_app="com.github.mtkennerly.ludusavi"
+flatpak_apps=(
+  "$protontricks_app"
+  "$ludusavi_app"
 )
 
 if [[ "$flatpak_ready" == "true" ]]; then
-  for app in "${apps[@]}"; do
+  for app in "${flatpak_apps[@]}"; do
     if ! flatpak info --user "$app" >/dev/null 2>&1; then
       log "Installing $app"
       if ! retry_cmd 3 flatpak --user install -y flathub "$app"; then
@@ -93,7 +95,7 @@ if [[ "$flatpak_ready" == "true" ]]; then
   done
   log "Flatpak user list:"
   flatpak --user list || log "Failed to list installed Flatpaks"
-  log "Protontricks version: $(flatpak run com.github.Matoking.protontricks --version 2>/dev/null || echo unavailable)"
+  log "Protontricks version: $(flatpak run "$protontricks_app" --version 2>/dev/null || echo unavailable)"
 else
   log "Skipping Flatpak install steps because flatpak user session is not ready."
 fi
@@ -207,39 +209,72 @@ else
   log "Steam library list not found yet at $library_file"
 fi
 
-declare -A filesystem_paths=()
+declare -A protontricks_paths=()
+declare -A ludusavi_paths=()
+
 add_path() {
-  local path="$1"
+  local -n target="$1"
+  local path="$2"
   [[ -n "$path" ]] || return
-  filesystem_paths["$path"]=1
+  target["$path"]=1
 }
 
 if [[ -n "$STEAM_ROOT" ]]; then
   canonical_steam="$HOME/.local/share/Steam"
-  add_path "$STEAM_ROOT"
-  add_path "$canonical_steam"
+  add_path protontricks_paths "$STEAM_ROOT"
+  add_path protontricks_paths "$canonical_steam"
+
+  add_path ludusavi_paths "$STEAM_ROOT/steamapps"
+  add_path ludusavi_paths "$STEAM_ROOT/steamapps/compatdata"
 fi
+
 for mp in "${mount_points[@]}"; do
-  add_path "$mp"
-done
-for lp in "${library_paths[@]}"; do
-  add_path "$lp"
+  add_path protontricks_paths "$mp"
 done
 
-sorted_paths=()
-if [[ ${#filesystem_paths[@]} -gt 0 ]]; then
-  mapfile -t sorted_paths < <(printf '%s\n' "${!filesystem_paths[@]}" | sort -u)
+for lp in "${library_paths[@]}"; do
+  add_path protontricks_paths "$lp"
+  add_path ludusavi_paths "$lp/steamapps"
+  add_path ludusavi_paths "$lp/steamapps/compatdata"
+done
+
+if [[ -d "$HOME/.local/share/Steam" ]]; then
+  add_path ludusavi_paths "$HOME/.local/share/Steam"
+fi
+if [[ -d "$HOME/.steam/debian-installation" ]]; then
+  add_path ludusavi_paths "$HOME/.steam/debian-installation"
 fi
 
-if [[ "$flatpak_ready" == "true" && ${#sorted_paths[@]} -gt 0 ]]; then
-  for app in "${apps[@]}"; do
-    for path in "${sorted_paths[@]}"; do
-      run_cmd flatpak --user override --filesystem="$path" "$app"
-    done
-    log "Applied Flatpak filesystem overrides for $app"
+sorted_protontricks_paths=()
+sorted_ludusavi_paths=()
+if [[ ${#protontricks_paths[@]} -gt 0 ]]; then
+  mapfile -t sorted_protontricks_paths < <(printf '%s\n' "${!protontricks_paths[@]}" | sort -u)
+fi
+if [[ ${#ludusavi_paths[@]} -gt 0 ]]; then
+  mapfile -t sorted_ludusavi_paths < <(printf '%s\n' "${!ludusavi_paths[@]}" | sort -u)
+fi
+
+if [[ "$flatpak_ready" == "true" && ${#sorted_protontricks_paths[@]} -gt 0 ]]; then
+  for path in "${sorted_protontricks_paths[@]}"; do
+    run_cmd flatpak --user override --filesystem="$path" "$protontricks_app"
   done
+  log "Applied Flatpak filesystem overrides for $protontricks_app"
 elif [[ "$flatpak_ready" == "true" ]]; then
-  log "No filesystem paths to apply for Flatpak overrides."
+  log "No filesystem paths to apply for Protontricks overrides."
+fi
+
+if [[ "$flatpak_ready" == "true" ]]; then
+  run_cmd flatpak --user override --reset "$ludusavi_app"
+  if [[ ${#sorted_ludusavi_paths[@]} -gt 0 ]]; then
+    log "Ludusavi override paths: ${sorted_ludusavi_paths[*]}"
+    for path in "${sorted_ludusavi_paths[@]}"; do
+      run_cmd flatpak --user override --filesystem="$path" "$ludusavi_app"
+    done
+    log "Applied scoped Flatpak filesystem overrides for $ludusavi_app"
+  else
+    log "No filesystem paths to apply for Ludusavi overrides."
+  fi
+  log "Ludusavi permissions: $(flatpak info --show-permissions "$ludusavi_app" 2>/dev/null || echo unavailable)"
 fi
 
 bin_dir="$HOME/bin"
@@ -301,6 +336,187 @@ elif [[ -d "$HOME/.local/share/Steam" ]]; then
 fi
 log "Protontricks wrapper STEAM_DIR: ${wrapper_steam_dir:-unset}"
 
+ludusavi_wrapper="$bin_dir/ludusavi-steam"
+cat <<'LUDUSAVI_WRAPPER' > "$ludusavi_wrapper"
+#!/usr/bin/env bash
+set -euo pipefail
+
+log() {
+  printf '[ludusavi-steam] %s\n' "$*" >&2
+}
+
+STEAM_ROOT=""
+steam_candidates=(
+  "$HOME/.steam/debian-installation"
+  "$HOME/.local/share/Steam"
+  "$HOME/.steam/steam"
+)
+
+for candidate in "${steam_candidates[@]}"; do
+  if [[ -d "$candidate/steamapps" ]]; then
+    STEAM_ROOT="$candidate"
+    break
+  fi
+done
+
+if [[ -z "$STEAM_ROOT" && -d "$HOME/.steam" ]]; then
+  steamapps_path="$(find "$HOME/.steam" -maxdepth 4 -type d -name steamapps 2>/dev/null | head -n 1 || true)"
+  if [[ -n "$steamapps_path" ]]; then
+    STEAM_ROOT="$(dirname "$steamapps_path")"
+  fi
+fi
+
+canonical_steam="$HOME/.local/share/Steam"
+library_paths=()
+library_file="$canonical_steam/steamapps/libraryfolders.vdf"
+if [[ -f "$library_file" ]]; then
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    library_paths+=("$path")
+  done < <(
+    grep -E '"path"' "$library_file" | \
+      sed -E 's/.*"path"[[:space:]]*"([^"]+)".*/\1/' | \
+      sed 's#\\\\#/#g' | \
+      sort -u
+  )
+fi
+
+declare -A ludusavi_paths=()
+add_path() {
+  local path="$1"
+  [[ -n "$path" ]] || return
+  ludusavi_paths["$path"]=1
+}
+
+if [[ -n "$STEAM_ROOT" ]]; then
+  add_path "$STEAM_ROOT/steamapps"
+  add_path "$STEAM_ROOT/steamapps/compatdata"
+fi
+
+for lp in "${library_paths[@]}"; do
+  add_path "$lp/steamapps"
+  add_path "$lp/steamapps/compatdata"
+done
+
+if [[ -d "$canonical_steam" ]]; then
+  add_path "$canonical_steam"
+fi
+if [[ -d "$HOME/.steam/debian-installation" ]]; then
+  add_path "$HOME/.steam/debian-installation"
+fi
+
+sorted_paths=()
+if [[ ${#ludusavi_paths[@]} -gt 0 ]]; then
+  mapfile -t sorted_paths < <(printf '%s\n' "${!ludusavi_paths[@]}" | sort -u)
+fi
+
+if command -v flatpak >/dev/null 2>&1; then
+  flatpak --user override --reset com.github.mtkennerly.ludusavi || true
+  if [[ ${#sorted_paths[@]} -gt 0 ]]; then
+    log "Applying scoped overrides: ${sorted_paths[*]}"
+    for path in "${sorted_paths[@]}"; do
+      flatpak --user override --filesystem="$path" com.github.mtkennerly.ludusavi || true
+    done
+  else
+    log "No Steam paths detected to scope Ludusavi."
+  fi
+else
+  log "Flatpak not available; skipping overrides."
+fi
+
+config_dir="$HOME/.var/app/com.github.mtkennerly.ludusavi/config"
+if [[ -d "$config_dir" ]]; then
+  mapfile -t config_candidates < <(
+    find "$config_dir" -maxdepth 3 -type f \( -iname '*config*' -o -iname '*.yaml' -o -iname '*.yml' -o -iname '*.toml' \) 2>/dev/null
+  )
+  if [[ ${#config_candidates[@]} -gt 0 ]]; then
+    log "Ludusavi config candidates found; skipping exclude edits (unknown schema)."
+  fi
+fi
+
+exec flatpak run com.github.mtkennerly.ludusavi
+LUDUSAVI_WRAPPER
+run_cmd chmod 0755 "$ludusavi_wrapper"
+log "Ludusavi wrapper present: $ludusavi_wrapper"
+
+ludusavi_dump="$bin_dir/ludusavi-dump-steam-paths"
+cat <<'LUDUSAVI_DUMP' > "$ludusavi_dump"
+#!/usr/bin/env bash
+set -euo pipefail
+
+STEAM_ROOT=""
+steam_candidates=(
+  "$HOME/.steam/debian-installation"
+  "$HOME/.local/share/Steam"
+  "$HOME/.steam/steam"
+)
+
+for candidate in "${steam_candidates[@]}"; do
+  if [[ -d "$candidate/steamapps" ]]; then
+    STEAM_ROOT="$candidate"
+    break
+  fi
+done
+
+if [[ -z "$STEAM_ROOT" && -d "$HOME/.steam" ]]; then
+  steamapps_path="$(find "$HOME/.steam" -maxdepth 4 -type d -name steamapps 2>/dev/null | head -n 1 || true)"
+  if [[ -n "$steamapps_path" ]]; then
+    STEAM_ROOT="$(dirname "$steamapps_path")"
+  fi
+fi
+
+echo "STEAM_ROOT=${STEAM_ROOT:-unset}"
+
+canonical_steam="$HOME/.local/share/Steam"
+library_file="$canonical_steam/steamapps/libraryfolders.vdf"
+library_paths=()
+if [[ -f "$library_file" ]]; then
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    library_paths+=("$path")
+  done < <(
+    grep -E '"path"' "$library_file" | \
+      sed -E 's/.*"path"[[:space:]]*"([^"]+)".*/\1/' | \
+      sed 's#\\\\#/#g' | \
+      sort -u
+  )
+fi
+
+if [[ ${#library_paths[@]} -gt 0 ]]; then
+  echo "Library roots:"
+  printf '  %s\n' "${library_paths[@]}"
+else
+  echo "Library roots: (none)"
+fi
+
+echo "Compatdata directories:"
+compat_roots=()
+if [[ -n "$STEAM_ROOT" ]]; then
+  compat_roots+=("$STEAM_ROOT")
+fi
+compat_roots+=("${library_paths[@]}")
+
+for root in "${compat_roots[@]}"; do
+  compat_path="$root/steamapps/compatdata"
+  if [[ -d "$compat_path" ]]; then
+    echo "  $compat_path"
+  fi
+done
+
+echo "Appmanifest counts:"
+for root in "${compat_roots[@]}"; do
+  steamapps_dir="$root/steamapps"
+  if [[ -d "$steamapps_dir" ]]; then
+    shopt -s nullglob
+    manifests=("$steamapps_dir"/appmanifest_*.acf)
+    shopt -u nullglob
+    echo "  $steamapps_dir: ${#manifests[@]} manifest(s)"
+  fi
+done
+LUDUSAVI_DUMP
+run_cmd chmod 0755 "$ludusavi_dump"
+log "Ludusavi diagnostics helper present: $ludusavi_dump"
+
 env_dir="$HOME/.config/environment.d"
 run_cmd mkdir -p "$env_dir"
 env_file="$env_dir/10-wolf-tools.conf"
@@ -317,6 +533,16 @@ Type=Application
 Name=Protontricks (Container Safe)
 Exec=/home/retro/bin/protontricks-gui
 Icon=com.github.Matoking.protontricks
+Categories=Game;Utility;
+Terminal=false
+DESKTOP_ENTRY
+
+cat <<'DESKTOP_ENTRY' > "$applications_dir/ludusavi-steam.desktop"
+[Desktop Entry]
+Type=Application
+Name=Ludusavi (Steam scoped)
+Exec=/home/retro/bin/ludusavi-steam
+Icon=com.github.mtkennerly.ludusavi
 Categories=Game;Utility;
 Terminal=false
 DESKTOP_ENTRY
