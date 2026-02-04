@@ -41,7 +41,7 @@ cat <<'EOF' >"$autostart_dir/wolf-tools-firstboot.desktop"
 [Desktop Entry]
 Type=Application
 Name=Wolf Tools First Boot
-Exec=/home/retro/.local/bin/wolf-tools-firstboot
+Exec=/usr/bin/env bash -lc '$HOME/.local/bin/wolf-tools-firstboot'
 OnlyShowIn=XFCE;
 Terminal=false
 X-GNOME-Autostart-enabled=true
