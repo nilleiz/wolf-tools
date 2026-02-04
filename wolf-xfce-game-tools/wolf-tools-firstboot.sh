@@ -25,6 +25,33 @@ log() {
   echo "[wolf-tools] $*"
 }
 
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+if [[ ! -d "$XDG_RUNTIME_DIR" ]]; then
+  mkdir -p "$XDG_RUNTIME_DIR"
+fi
+
+dbus_session_ready() {
+  if command -v dbus-send >/dev/null 2>&1; then
+    dbus-send --session --dest=org.freedesktop.DBus --type=method_call / org.freedesktop.DBus.ListNames >/dev/null 2>&1
+    return $?
+  fi
+  if command -v gdbus >/dev/null 2>&1; then
+    gdbus call --session --dest org.freedesktop.DBus --object-path / --method org.freedesktop.DBus.ListNames >/dev/null 2>&1
+    return $?
+  fi
+  log "No dbus-send or gdbus available to verify DBus readiness."
+  return 0
+}
+
+display_ready() {
+  if command -v xdpyinfo >/dev/null 2>&1; then
+    xdpyinfo >/dev/null 2>&1
+    return $?
+  fi
+  log "xdpyinfo not available; skipping X11 probe."
+  return 0
+}
+
 wait_for_session_ready() {
   if [[ -z "${DISPLAY:-}" ]]; then
     export DISPLAY=":0"
@@ -32,7 +59,7 @@ wait_for_session_ready() {
 
   log "Waiting for X11 session on DISPLAY=$DISPLAY"
   for _ in {1..60}; do
-    if xdpyinfo >/dev/null 2>&1; then
+    if display_ready; then
       break
     fi
     sleep 1
@@ -40,7 +67,7 @@ wait_for_session_ready() {
 
   log "Waiting for DBus session"
   for _ in {1..60}; do
-    if dbus-send --session --dest=org.freedesktop.DBus --type=method_call / org.freedesktop.DBus.ListNames >/dev/null 2>&1; then
+    if dbus_session_ready; then
       return 0
     fi
     sleep 1
@@ -79,9 +106,10 @@ start_progress() {
         --title="Wolf Tools" \
         --text="Setting up Protontricks + Ludusavi…" <"$progress_fifo" &
       progress_pid=$!
-      exec {progress_fd}>"$progress_fifo"
-      if [[ -n "$progress_fd" ]]; then
+      if exec {progress_fd}>"$progress_fifo"; then
         echo "# Setting up Protontricks + Ludusavi…" >&"$progress_fd" || true
+      else
+        log "Failed to open progress fifo; continuing without UI."
       fi
     else
       log "Failed to create progress fifo; continuing without UI."
