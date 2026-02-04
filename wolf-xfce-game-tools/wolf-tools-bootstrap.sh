@@ -122,7 +122,7 @@ for candidate in "${steam_candidates[@]}"; do
 done
 
 if [[ -z "$STEAM_ROOT" ]]; then
-  log "Steam not detected yet; start Steam once and restart XFCE to apply overrides."
+  log "Steam not detected yet; start Steam once to apply overrides."
 else
   log "Detected Steam root: $STEAM_ROOT"
 
@@ -335,13 +335,13 @@ elif [[ -d "$HOME/.local/share/Steam" ]]; then
 fi
 log "Protontricks wrapper STEAM_DIR: ${wrapper_steam_dir:-unset}"
 
-ludusavi_wrapper="$bin_dir/ludusavi-steam"
+ludusavi_wrapper="$bin_dir/ludusavi"
 cat <<'LUDUSAVI_WRAPPER' > "$ludusavi_wrapper"
 #!/usr/bin/env bash
 set -euo pipefail
 
 log() {
-  printf '[ludusavi-steam] %s\n' "$*" >&2
+  printf '[ludusavi] %s\n' "$*" >&2
 }
 
 STEAM_ROOT=""
@@ -441,6 +441,12 @@ LUDUSAVI_WRAPPER
 run_cmd chmod 0755 "$ludusavi_wrapper"
 log "Ludusavi wrapper present: $ludusavi_wrapper"
 
+legacy_ludusavi_wrapper="$bin_dir/ludusavi-steam"
+if [[ -f "$legacy_ludusavi_wrapper" ]]; then
+  run_cmd rm -f "$legacy_ludusavi_wrapper"
+  log "Removed legacy Ludusavi wrapper at $legacy_ludusavi_wrapper"
+fi
+
 ludusavi_dump="$bin_dir/ludusavi-dump-steam-paths"
 cat <<'LUDUSAVI_DUMP' > "$ludusavi_dump"
 #!/usr/bin/env bash
@@ -526,25 +532,31 @@ log "Ensured PATH includes \$HOME/bin via $env_file"
 
 applications_dir="$HOME/.local/share/applications"
 run_cmd mkdir -p "$applications_dir"
-cat <<'DESKTOP_ENTRY' > "$applications_dir/protontricks-gui.desktop"
+run_cmd rm -f \
+  "$applications_dir/protontricks-gui.desktop" \
+  "$applications_dir/ludusavi-steam.desktop"
+
+cat <<'DESKTOP_ENTRY' > "$applications_dir/com.github.Matoking.protontricks.desktop"
 [Desktop Entry]
 Type=Application
-Name=Protontricks (Container Safe)
+Name=Protontricks
 Exec=/home/retro/bin/protontricks-gui
 Icon=com.github.Matoking.protontricks
-Categories=Game;Utility;
+Categories=Game;
 Terminal=false
 DESKTOP_ENTRY
 
-cat <<'DESKTOP_ENTRY' > "$applications_dir/ludusavi-steam.desktop"
+cat <<'DESKTOP_ENTRY' > "$applications_dir/com.github.mtkennerly.ludusavi.desktop"
 [Desktop Entry]
 Type=Application
-Name=Ludusavi (Steam)
-Exec=/home/retro/bin/ludusavi-steam
+Name=Ludusavi
+Exec=/home/retro/bin/ludusavi
 Icon=com.github.mtkennerly.ludusavi
-Categories=Game;Utility;
+Categories=Game;
 Terminal=false
 DESKTOP_ENTRY
+
+run_cmd update-desktop-database "$applications_dir"
 
 log "Bootstrap completed successfully."
 if [[ "${WOLF_DEBUG_KEEPALIVE:-}" == "1" ]]; then
