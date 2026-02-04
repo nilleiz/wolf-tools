@@ -9,8 +9,13 @@ export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 config_dir="$XDG_CONFIG_HOME/wolf-tools"
 mkdir -p "$config_dir"
 
-log_file="$config_dir/setup-ui.log"
-exec >>"$log_file" 2>&1
+log_file="$config_dir/bootstrap.log"
+system_log="/var/log/wolf-tools-bootstrap.log"
+log_targets=("$log_file")
+if [[ -w "$system_log" ]] || touch "$system_log" >/dev/null 2>&1; then
+  log_targets+=("$system_log")
+fi
+exec > >(tee -a "${log_targets[@]}") 2>&1
 
 setup_needed="$config_dir/setup-needed"
 setup_done="$config_dir/setup-done"
@@ -37,17 +42,28 @@ elif command -v xmessage >/dev/null 2>&1; then
 fi
 
 ui_pid=""
+ui_fd=""
 
 show_progress() {
   local message="$1"
   case "$ui_tool" in
     zenity)
-      zenity --progress --pulsate --no-cancel --title="Wolf Tools" --text="$message" &
+      local ui_fifo
+      ui_fifo="$(mktemp -u)"
+      mkfifo "$ui_fifo"
+      zenity --progress --pulsate --no-cancel --title="Wolf Tools" --text="$message" <"$ui_fifo" &
       ui_pid=$!
+      exec {ui_fd}>"$ui_fifo"
+      rm -f "$ui_fifo"
       ;;
     yad)
-      yad --progress --pulsate --no-buttons --title="Wolf Tools" --text="$message" &
+      local ui_fifo
+      ui_fifo="$(mktemp -u)"
+      mkfifo "$ui_fifo"
+      yad --progress --pulsate --no-buttons --title="Wolf Tools" --text="$message" <"$ui_fifo" &
       ui_pid=$!
+      exec {ui_fd}>"$ui_fifo"
+      rm -f "$ui_fifo"
       ;;
     xmessage)
       xmessage -center "$message" &
@@ -59,9 +75,20 @@ show_progress() {
   esac
 }
 
+update_progress() {
+  local message="$1"
+  if [[ -n "$ui_fd" ]]; then
+    printf 'text:%s\npulse\n' "$message" >&"$ui_fd"
+  fi
+}
+
 close_progress() {
   if [[ -n "$ui_pid" ]]; then
     kill "$ui_pid" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$ui_fd" ]]; then
+    exec {ui_fd}>&-
+    ui_fd=""
   fi
 }
 
@@ -104,27 +131,61 @@ show_error() {
 trap 'close_progress' EXIT
 
 show_progress "Setting up Protontricks and Ludusavi…"
+update_progress "Preparing user directories…"
 
 install_log="$config_dir/setup-install.log"
 : >"$install_log"
 
 protontricks_app="com.github.Matoking.protontricks"
 ludusavi_app="com.github.mtkennerly.ludusavi"
+override_paths=(
+  "/mnt"
+  "$HOME/.steam"
+  "$HOME/.local/share/Steam"
+)
+
+mkdir -p "$HOME/.local/share" "$HOME/ludusavi-backup"
+steam_link="$HOME/.local/share/Steam"
+if [[ -e "$steam_link" && ! -L "$steam_link" ]]; then
+  rm -rf "$steam_link"
+fi
+ln -sfn "$HOME/.steam/debian-installation" "$steam_link"
+
+update_progress "Ensuring Flatpak remote…"
 
 log "Ensuring Flathub remote exists."
+flatpak_ready=false
+for i in {1..10}; do
+  if flatpak --user remotes >/dev/null 2>&1; then
+    flatpak_ready=true
+    break
+  fi
+  sleep 1
+done
+if [[ "$flatpak_ready" != "true" ]]; then
+  close_progress
+  show_error "Flatpak is not ready yet. Please restart the container and try again."
+  exit 0
+fi
 if ! flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo >>"$install_log" 2>&1; then
   close_progress
   show_error "Failed to add Flathub remote.\n\n$(cat "$install_log")"
   exit 0
 fi
 
-log "Installing flatpaks."
-if ! flatpak --user install -y flathub "$protontricks_app" "$ludusavi_app" >>"$install_log" 2>&1; then
-  close_progress
-  show_error "Failed to install Protontricks or Ludusavi.\n\n$(cat "$install_log")"
-  exit 0
-fi
+update_progress "Installing Flatpaks…"
+log "Installing flatpaks if missing."
+for app in "$protontricks_app" "$ludusavi_app"; do
+  if ! flatpak --user info "$app" >/dev/null 2>&1; then
+    if ! flatpak --user install -y flathub "$app" >>"$install_log" 2>&1; then
+      close_progress
+      show_error "Failed to install $app.\n\n$(cat "$install_log")"
+      exit 0
+    fi
+  fi
+done
 
+update_progress "Verifying Flatpaks…"
 log "Verifying flatpaks."
 if ! flatpak info "$protontricks_app" >>"$install_log" 2>&1; then
   close_progress
@@ -137,6 +198,15 @@ if ! flatpak info "$ludusavi_app" >>"$install_log" 2>&1; then
   exit 0
 fi
 
+update_progress "Applying Flatpak permissions…"
+log "Applying flatpak overrides."
+for app in "$protontricks_app" "$ludusavi_app"; do
+  for path in "${override_paths[@]}"; do
+    flatpak --user override --filesystem="$path" "$app" >>"$install_log" 2>&1 || true
+  done
+done
+
+update_progress "Creating launchers…"
 log "Creating wrappers and desktop entries."
 
 bin_dir="$HOME/bin"
@@ -147,21 +217,14 @@ cat <<'PROTONTRICKS_GUI' > "$protontricks_gui"
 #!/usr/bin/env bash
 set -euo pipefail
 
-steam_dir=""
-if [[ -d "$HOME/.steam/debian-installation" ]]; then
-  steam_dir="$HOME/.steam/debian-installation"
-elif [[ -d "$HOME/.steam/steam" ]]; then
-  steam_dir="$HOME/.steam/steam"
-elif [[ -d "$HOME/.local/share/Steam" ]]; then
-  steam_dir="$HOME/.local/share/Steam"
-fi
-
-if [[ -n "$steam_dir" ]]; then
-  export STEAM_DIR="$steam_dir"
-fi
 export GTK_USE_PORTAL=0
+export GIO_USE_VFS=local
 
-exec flatpak run com.github.Matoking.protontricks --no-bwrap --gui "$@"
+exec flatpak run \
+  --env=STEAM_DIR=/home/retro/.steam/debian-installation \
+  --env=GTK_USE_PORTAL=0 \
+  --env=GIO_USE_VFS=local \
+  com.github.Matoking.protontricks --gui "$@"
 PROTONTRICKS_GUI
 chmod 0755 "$protontricks_gui"
 
@@ -170,104 +233,44 @@ cat <<'LUDUSAVI_WRAPPER' > "$ludusavi_wrapper"
 #!/usr/bin/env bash
 set -euo pipefail
 
-log() {
-  printf '[ludusavi] %s\n' "$*" >&2
-}
+export GTK_USE_PORTAL=0
+export GIO_USE_VFS=local
 
-STEAM_ROOT=""
-steam_candidates=(
-  "$HOME/.steam/debian-installation"
-  "$HOME/.local/share/Steam"
-  "$HOME/.steam/steam"
-)
-
-for candidate in "${steam_candidates[@]}"; do
-  if [[ -f "$candidate/steamapps/libraryfolders.vdf" ]]; then
-    STEAM_ROOT="$candidate"
-    break
-  fi
-done
-
-canonical_steam="$HOME/.local/share/Steam"
-if [[ -n "$STEAM_ROOT" ]]; then
-  mkdir -p "$HOME/.local/share" 2>/dev/null || true
-  if ln -sfn "$STEAM_ROOT" "$canonical_steam" 2>/dev/null; then
-    log "Ensured Steam symlink at $canonical_steam -> $STEAM_ROOT"
-  else
-    log "Unable to create Steam symlink at $canonical_steam"
-  fi
-fi
-library_paths=()
-library_file=""
-if [[ -n "$STEAM_ROOT" ]]; then
-  library_file="$STEAM_ROOT/steamapps/libraryfolders.vdf"
-fi
-if [[ -n "$library_file" && -f "$library_file" ]]; then
-  while IFS= read -r path; do
-    [[ -n "$path" ]] || continue
-    if [[ -d "$path" ]]; then
-      library_paths+=("$path")
-    fi
-  done < <(
-    grep -E '"path"' "$library_file" | \
-      sed -E 's/.*"path"[[:space:]]*"([^"]+)".*/\1/' | \
-      sed 's#\\\\#/#g' | \
-      sort -u
-  )
-fi
-
-declare -A ludusavi_paths=()
-add_path() {
-  local path="$1"
-  [[ -n "$path" ]] || return
-  ludusavi_paths["$path"]=1
-}
-
-if [[ -n "$STEAM_ROOT" ]]; then
-  add_path "$STEAM_ROOT/steamapps"
-  add_path "$STEAM_ROOT/steamapps/compatdata"
-fi
-
-for lp in "${library_paths[@]}"; do
-  add_path "$lp/steamapps"
-  add_path "$lp/steamapps/compatdata"
-done
-
-if [[ -d "$canonical_steam" ]]; then
-  add_path "$canonical_steam"
-fi
-
-sorted_paths=()
-if [[ ${#ludusavi_paths[@]} -gt 0 ]]; then
-  mapfile -t sorted_paths < <(printf '%s\n' "${!ludusavi_paths[@]}" | sort -u)
-fi
-
-if command -v flatpak >/dev/null 2>&1; then
-  flatpak --user override --reset com.github.mtkennerly.ludusavi || true
-  if [[ ${#sorted_paths[@]} -gt 0 ]]; then
-    log "Applying scoped overrides: ${sorted_paths[*]}"
-    for path in "${sorted_paths[@]}"; do
-      flatpak --user override --filesystem="$path" com.github.mtkennerly.ludusavi || true
-    done
-  else
-    log "No Steam paths detected to scope Ludusavi."
-  fi
-else
-  log "Flatpak not available; skipping overrides."
-fi
-
-exec flatpak run com.github.mtkennerly.ludusavi
+exec flatpak run \
+  --env=GTK_USE_PORTAL=0 \
+  --env=GIO_USE_VFS=local \
+  com.github.mtkennerly.ludusavi "$@"
 LUDUSAVI_WRAPPER
 chmod 0755 "$ludusavi_wrapper"
 
 applications_dir="$XDG_DATA_HOME/applications"
 mkdir -p "$applications_dir"
 
-rm -f \
-  "$applications_dir/protontricks-gui.desktop" \
-  "$applications_dir/protontricks-container-safe.desktop" \
-  "$applications_dir/ludusavi-steam.desktop" \
-  "$applications_dir/ludusavi-container-safe.desktop"
+update_progress "Removing duplicate menu entries…"
+rm -f "$applications_dir/"*protontricks*.desktop "$applications_dir/"*ludusavi*.desktop
+desktop_sources=(
+  "$HOME/.local/share/flatpak/exports/share/applications"
+  "/var/lib/flatpak/exports/share/applications"
+  "/usr/share/applications"
+  "/usr/local/share/applications"
+  "/app/share/applications"
+)
+for source_dir in "${desktop_sources[@]}"; do
+  [[ -d "$source_dir" ]] || continue
+  while IFS= read -r desktop_file; do
+    desktop_name="$(basename "$desktop_file")"
+    case "$desktop_name" in
+      com.github.Matoking.protontricks.desktop|com.github.mtkennerly.ludusavi.desktop)
+        continue
+        ;;
+    esac
+    cat <<'DESKTOP_ENTRY' > "$applications_dir/$desktop_name"
+[Desktop Entry]
+Hidden=true
+NoDisplay=true
+DESKTOP_ENTRY
+  done < <(find "$source_dir" -maxdepth 1 -type f \( -iname '*protontricks*.desktop' -o -iname '*ludusavi*.desktop' \))
+done
 
 cat <<'DESKTOP_ENTRY' > "$applications_dir/com.github.Matoking.protontricks.desktop"
 [Desktop Entry]
@@ -323,9 +326,9 @@ touch "$setup_done"
 close_progress
 
 if [[ "$restart_needed" == "true" ]]; then
-  show_info "Setup complete. Please restart the container once."
+  show_info "Setup complete.\n\nIf you still see missing icons, restart the container once.\n\nLudusavi backups can be placed in /home/retro/ludusavi-backup."
 else
-  show_info "Setup complete."
+  show_info "Setup complete.\n\nLudusavi backups can be placed in /home/retro/ludusavi-backup."
 fi
 
 exit 0

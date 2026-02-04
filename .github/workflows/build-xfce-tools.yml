@@ -37,8 +37,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: ./xfce-tooling-bootstrap
-          file: ./xfce-tooling-bootstrap/Dockerfile
+          context: ./wolf-xfce-game-tools
+          file: ./wolf-xfce-game-tools/Dockerfile
           push: true
           pull: true
           platforms: linux/amd64

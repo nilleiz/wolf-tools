@@ -14,9 +14,14 @@ chown 1000:1000 "$XDG_RUNTIME_DIR" || true
 chmod 700 "$XDG_RUNTIME_DIR" || true
 
 config_dir="$HOME/.config/wolf-tools"
+bootstrap_log="$config_dir/bootstrap.log"
+system_log="/var/log/wolf-tools-bootstrap.log"
 applications_dir="$HOME/.local/share/applications"
 
 mkdir -p "$config_dir" "$applications_dir" "$HOME/bin"
+touch "$bootstrap_log" "$system_log"
+chown 1000:1000 "$bootstrap_log" "$system_log" || true
+chmod 0644 "$bootstrap_log" "$system_log" || true
 chown -R 1000:1000 "$HOME/.config" "$HOME/.local" "$HOME/bin" || true
 
 if [[ -f /usr/local/bin/wolf-tools-setup-ui.sh ]]; then
