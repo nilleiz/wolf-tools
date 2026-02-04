@@ -36,7 +36,7 @@ env = { PUID = "1000", PGID = "1000", USER = "retro", USERNAME = "retro", HOME =
 - Steam installs are typically available at `~/.steam/debian-installation` via Wolf's `profile_data` mount.
 - Protontricks runs with `GTK_USE_PORTAL=0`, `GIO_USE_VFS=local`, and `STEAM_DIR` set to `~/.steam/debian-installation` for container-friendly behavior.
 - For Ludusavi, launch the standard menu entry so Flatpak permissions stay minimal and backup previews finish promptly.
-- If you already have Ludusavi backups, copy them into `/home/retro/ludusavi-backup` before restoring.
+- If you already have Ludusavi backups, copy them into `/home/retro/ludusavi-backup` before restoring (for example via a bind mount).
 - For non-Steam shortcuts, Ludusavi autodetection depends on the Steam shortcut name matching the PCGamingWiki title (e.g. rename “ManorLords.exe” to “Manor Lords”).
 
 ## Troubleshooting

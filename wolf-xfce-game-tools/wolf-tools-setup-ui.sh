@@ -143,6 +143,13 @@ override_paths=(
   "$HOME/.steam"
   "$HOME/.local/share/Steam"
 )
+flatpak_install_args=()
+flatpak_install_help="$(flatpak install --help 2>/dev/null || true)"
+if echo "$flatpak_install_help" | grep -q -- '--noninteractive'; then
+  flatpak_install_args+=(--noninteractive)
+elif echo "$flatpak_install_help" | grep -q -- '-y'; then
+  flatpak_install_args+=(-y)
+fi
 
 mkdir -p "$HOME/.local/share" "$HOME/ludusavi-backup"
 steam_link="$HOME/.local/share/Steam"
@@ -155,7 +162,7 @@ update_progress "Ensuring Flatpak remote…"
 
 log "Ensuring Flathub remote exists."
 flatpak_ready=false
-for i in {1..10}; do
+for i in {1..60}; do
   if flatpak --user remotes >/dev/null 2>&1; then
     flatpak_ready=true
     break
@@ -167,17 +174,18 @@ if [[ "$flatpak_ready" != "true" ]]; then
   show_error "Flatpak is not ready yet. Please restart the container and try again."
   exit 0
 fi
-if ! flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo >>"$install_log" 2>&1; then
-  close_progress
-  show_error "Failed to add Flathub remote.\n\n$(cat "$install_log")"
-  exit 0
+if ! flatpak --user remotes 2>/dev/null | awk '{print $1}' | grep -Fxq "flathub"; then
+  log "Flathub remote missing; attempting to add."
+  if ! flatpak --user remote-add flathub https://flathub.org/repo/flathub.flatpakrepo >>"$install_log" 2>&1; then
+    log "Failed to add Flathub remote. Continuing without hard exit."
+  fi
 fi
 
 update_progress "Installing Flatpaks…"
 log "Installing flatpaks if missing."
 for app in "$protontricks_app" "$ludusavi_app"; do
   if ! flatpak --user info "$app" >/dev/null 2>&1; then
-    if ! flatpak --user install -y flathub "$app" >>"$install_log" 2>&1; then
+    if ! flatpak --user install "${flatpak_install_args[@]}" flathub "$app" >>"$install_log" 2>&1; then
       close_progress
       show_error "Failed to install $app.\n\n$(cat "$install_log")"
       exit 0
@@ -187,12 +195,12 @@ done
 
 update_progress "Verifying Flatpaks…"
 log "Verifying flatpaks."
-if ! flatpak info "$protontricks_app" >>"$install_log" 2>&1; then
+if ! flatpak --user info "$protontricks_app" >>"$install_log" 2>&1; then
   close_progress
   show_error "Protontricks verification failed.\n\n$(cat "$install_log")"
   exit 0
 fi
-if ! flatpak info "$ludusavi_app" >>"$install_log" 2>&1; then
+if ! flatpak --user info "$ludusavi_app" >>"$install_log" 2>&1; then
   close_progress
   show_error "Ludusavi verification failed.\n\n$(cat "$install_log")"
   exit 0
@@ -220,11 +228,16 @@ set -euo pipefail
 export GTK_USE_PORTAL=0
 export GIO_USE_VFS=local
 
+no_bwrap_flag=()
+if [[ "${PROTONTRICKS_NO_BWRAP:-}" == "1" ]]; then
+  no_bwrap_flag+=(--no-bwrap)
+fi
+
 exec flatpak run \
   --env=STEAM_DIR=/home/retro/.steam/debian-installation \
   --env=GTK_USE_PORTAL=0 \
   --env=GIO_USE_VFS=local \
-  com.github.Matoking.protontricks --gui "$@"
+  com.github.Matoking.protontricks "${no_bwrap_flag[@]}" --gui "$@"
 PROTONTRICKS_GUI
 chmod 0755 "$protontricks_gui"
 
@@ -312,11 +325,11 @@ if ! xfdesktop --reload >/dev/null 2>&1; then
   restart_needed=true
 fi
 
-if ! flatpak run --command=true "$ludusavi_app" >/dev/null 2>&1; then
+if ! flatpak --user run --command=true "$ludusavi_app" >/dev/null 2>&1; then
   restart_needed=true
 fi
 
-if ! flatpak run --command=true "$protontricks_app" >/dev/null 2>&1; then
+if ! flatpak --user run --command=true "$protontricks_app" >/dev/null 2>&1; then
   restart_needed=true
 fi
 
