@@ -39,4 +39,5 @@ RUN chmod 0755 /usr/local/bin/wolf-tools-bootstrap.sh \
   && bash -n /etc/cont-init.d/10-setup_user.sh \
   && test -x /usr/local/bin/wolf-tools-bootstrap.sh \
   && test -f /etc/xdg/autostart/wolf-tools-bootstrap.desktop \
+  && test -f /usr/share/applications/wolf-tools-bootstrap-run.desktop \
   && cat /etc/xdg/autostart/wolf-tools-bootstrap.desktop
