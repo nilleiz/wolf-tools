@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
-Name=Wolf Tools Setup (Run)
-Exec=/home/retro/bin/wolf-tools-setup-ui
+Name=Wolf Tools First Boot (Run)
+Exec=/home/retro/.local/bin/wolf-tools-firstboot
 OnlyShowIn=XFCE;
 Terminal=false
 Categories=Utility;

@@ -1,5 +1,10 @@
 #!/usr/bin/with-contenv bash
-set -euo pipefail
+set -u
+set -o pipefail
+
+trap 'echo "[wolf-tools] bootstrap failed at line $LINENO"' ERR
+
+echo "[wolf-tools] bootstrap start"
 
 if ! id -u "${USER:-retro}" >/dev/null 2>&1; then
   exit 0
@@ -17,46 +22,41 @@ config_dir="$HOME/.config/wolf-tools"
 bootstrap_log="$config_dir/bootstrap.log"
 system_log="/var/log/wolf-tools-bootstrap.log"
 applications_dir="$HOME/.local/share/applications"
+autostart_dir="$HOME/.config/autostart"
+local_bin_dir="$HOME/.local/bin"
+pending_file="$config_dir/bootstrap.pending"
+done_file="$config_dir/bootstrap.done"
 
-mkdir -p "$config_dir" "$applications_dir" "$HOME/bin"
+mkdir -p "$config_dir" "$applications_dir" "$HOME/bin" "$autostart_dir" "$local_bin_dir"
 touch "$bootstrap_log" "$system_log"
 chown 1000:1000 "$bootstrap_log" "$system_log" || true
 chmod 0644 "$bootstrap_log" "$system_log" || true
 chown -R 1000:1000 "$HOME/.config" "$HOME/.local" "$HOME/bin" || true
 
-if [[ -f /usr/local/bin/wolf-tools-setup-ui.sh ]]; then
-  install -m 0755 -o 1000 -g 1000 /usr/local/bin/wolf-tools-setup-ui.sh "$HOME/bin/wolf-tools-setup-ui"
+if [[ -f /usr/local/bin/wolf-tools-firstboot.sh ]]; then
+  install -m 0755 -o 1000 -g 1000 /usr/local/bin/wolf-tools-firstboot.sh "$local_bin_dir/wolf-tools-firstboot"
 fi
 
-setup_needed="$config_dir/setup-needed"
-setup_done="$config_dir/setup-done"
+cat <<'EOF' >"$autostart_dir/wolf-tools-firstboot.desktop"
+[Desktop Entry]
+Type=Application
+Name=Wolf Tools First Boot
+Exec=/home/retro/.local/bin/wolf-tools-firstboot
+OnlyShowIn=XFCE;
+Terminal=false
+X-GNOME-Autostart-enabled=true
+Hidden=false
+EOF
+chown 1000:1000 "$autostart_dir/wolf-tools-firstboot.desktop" || true
+chmod 0644 "$autostart_dir/wolf-tools-firstboot.desktop" || true
 
-protontricks_app="com.github.Matoking.protontricks"
-ludusavi_app="com.github.mtkennerly.ludusavi"
-
-needs_setup=false
-if command -v flatpak >/dev/null 2>&1; then
-  if command -v su >/dev/null 2>&1; then
-    if ! su -s /bin/bash "$USER" -c "XDG_DATA_HOME=\"$HOME/.local/share\" XDG_CONFIG_HOME=\"$HOME/.config\" flatpak --user info $protontricks_app >/dev/null 2>&1"; then
-      needs_setup=true
-    fi
-    if ! su -s /bin/bash "$USER" -c "XDG_DATA_HOME=\"$HOME/.local/share\" XDG_CONFIG_HOME=\"$HOME/.config\" flatpak --user info $ludusavi_app >/dev/null 2>&1"; then
-      needs_setup=true
-    fi
-  else
-    needs_setup=true
-  fi
+if [[ -f "$done_file" ]]; then
+  rm -f "$pending_file"
 else
-  needs_setup=true
+  touch "$pending_file"
+  chown 1000:1000 "$pending_file" || true
 fi
 
-if [[ "$needs_setup" == "true" ]]; then
-  touch "$setup_needed"
-  chown 1000:1000 "$setup_needed" || true
-else
-  rm -f "$setup_needed"
-fi
+echo "[wolf-tools] Prepared firstboot script and autostart entry."
 
-if [[ -f "$setup_done" ]]; then
-  chown 1000:1000 "$setup_done" || true
-fi
+echo "[wolf-tools] bootstrap end"

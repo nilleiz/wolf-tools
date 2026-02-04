@@ -143,13 +143,7 @@ override_paths=(
   "$HOME/.steam"
   "$HOME/.local/share/Steam"
 )
-flatpak_install_args=()
-flatpak_install_help="$(flatpak install --help 2>/dev/null || true)"
-if echo "$flatpak_install_help" | grep -q -- '--noninteractive'; then
-  flatpak_install_args+=(--noninteractive)
-elif echo "$flatpak_install_help" | grep -q -- '-y'; then
-  flatpak_install_args+=(-y)
-fi
+flatpak_install_args=(-y)
 
 mkdir -p "$HOME/.local/share" "$HOME/ludusavi-backup"
 steam_link="$HOME/.local/share/Steam"
@@ -174,7 +168,7 @@ if [[ "$flatpak_ready" != "true" ]]; then
   show_error "Flatpak is not ready yet. Please restart the container and try again."
   exit 0
 fi
-if ! flatpak --user remotes 2>/dev/null | awk '{print $1}' | grep -Fxq "flathub"; then
+if ! flatpak --user remotes --columns=name 2>/dev/null | grep -Fxq "flathub"; then
   log "Flathub remote missing; attempting to add."
   if ! flatpak --user remote-add flathub https://flathub.org/repo/flathub.flatpakrepo >>"$install_log" 2>&1; then
     log "Failed to add Flathub remote. Continuing without hard exit."

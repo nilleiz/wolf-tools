@@ -79,7 +79,7 @@ if [[ "$flatpak_ready" == "true" ]]; then
   log "Flatpak user remotes:"
   flatpak --user remotes || log "Failed to list flatpak remotes"
   log "Ensuring Flathub remote exists"
-  if ! flatpak --user remotes 2>/dev/null | awk '{print $1}' | grep -Fxq "flathub"; then
+  if ! flatpak --user remotes --columns=name 2>/dev/null | grep -Fxq "flathub"; then
     if ! flatpak --user remote-add flathub https://flathub.org/repo/flathub.flatpakrepo; then
       log "Failed to add Flathub remote (continuing)."
     fi
@@ -94,13 +94,7 @@ flatpak_apps=(
 )
 
 if [[ "$flatpak_ready" == "true" ]]; then
-  flatpak_install_args=()
-  flatpak_install_help="$(flatpak install --help 2>/dev/null || true)"
-  if echo "$flatpak_install_help" | grep -q -- '--noninteractive'; then
-    flatpak_install_args+=(--noninteractive)
-  elif echo "$flatpak_install_help" | grep -q -- '-y'; then
-    flatpak_install_args+=(-y)
-  fi
+  flatpak_install_args=(-y)
   for app in "${flatpak_apps[@]}"; do
     if ! flatpak info --user "$app" >/dev/null 2>&1; then
       log "Installing $app"
