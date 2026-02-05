@@ -1,12 +1,12 @@
 # Wolf Tools Monorepo
 
-This repository is a monorepo for multiple Wolf-compatible tool images. Each image lives in its own subfolder, has its own Dockerfile and documentation, and can be built and published independently.
+This repository currently contains the Wolf XFCE tools image.
 
 ## Images
 
 | Image | Description | Folder |
 | --- | --- | --- |
-| Steam tools image | Steam base with extra tooling for troubleshooting and save management | `steam/` |
+| XFCE tools image | XFCE-based Wolf image with bootstrap tooling for Protontricks and Ludusavi | `wolf-xfce-game-tools/` |
 
 ## Tagging & publishing
 
@@ -15,8 +15,14 @@ Images are tagged with:
 - `edge`
 - The short git SHA (for reproducible pinning)
 
-The GitHub Actions workflow builds and pushes the current Steam tools image to Docker Hub.
+GitHub Actions builds and pushes the XFCE tools image to Docker Hub.
+
+## Build locally
+
+```bash
+docker build -t nillivanilli0815/wolf-xfce-tools:edge ./wolf-xfce-game-tools
+```
 
 ## Usage with Wolf
 
-Use the image in your Wolf app configuration by pointing an app entry to the appropriate image tag. See the image-specific README for example TOML snippets.
+Use the image in your Wolf app configuration by pointing an app entry to the appropriate image tag. See the image-specific README for example TOML snippets and runtime notes.
